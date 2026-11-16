@@ -1,7 +1,7 @@
 APP_NAME   := tabSS
 BUILD_DIR  := build
 APP        := $(BUILD_DIR)/$(APP_NAME).app
-INSTALL_TO := /Applications/$(APP_NAME).app
+INSTALL_TO := $(HOME)/Applications/$(APP_NAME).app
 CERT_NAME  := tabSS Local Signing
 CODESIGN   := /usr/bin/codesign
 SECURITY   := /usr/bin/security

@@ -26,7 +26,7 @@ Requires Xcode (Swift 6) on macOS 14 or later. No other dependencies.
 
 ```sh
 make cert      # once: local code-signing identity, so permission grants survive rebuilds
-make install   # build, sign, copy to /Applications and launch
+make install   # build, sign, copy to ~/Applications and launch
 ```
 
 Signing asks the Keychain for approval each time; choose **Allow**, not "Always Allow".

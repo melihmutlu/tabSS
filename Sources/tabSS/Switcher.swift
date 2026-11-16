@@ -72,18 +72,16 @@ final class Switcher {
         if let focused {
             thumbnails.capture(focused)  // it is about to lose focus and is still on screen
         }
-        // Shared instances keep each app's icon cached between sessions.
-        let runningApps = Dictionary(NSWorkspace.shared.runningApplications.map { ($0.processIdentifier, $0) }, uniquingKeysWith: { first, _ in first })
-        let entries = store.orderedItems().prefix(screen.map(panel.capacity) ?? 0).compactMap { entry(for: $0, runningApps: runningApps) }
+        let entries = store.orderedItems().prefix(screen.map(panel.capacity) ?? 0).compactMap(entry)
         var firstItemIsFocused = false
         if case let .window(first)? = entries.first { firstItemIsFocused = first.id == focused }
         return .init(entries: entries, firstItemIsFocused: firstItemIsFocused)
     }
 
-    private func entry(for item: SwitcherItem<CGWindowID, pid_t>, runningApps: [pid_t: NSRunningApplication]) -> SwitcherEntry? {
+    private func entry(for item: SwitcherItem<CGWindowID, pid_t>) -> SwitcherEntry? {
         switch item {
         case let .window(id): store.windows[id].map(SwitcherEntry.window)
-        case let .app(pid): runningApps[pid].map(SwitcherEntry.app)
+        case let .app(pid): store.apps[pid].map(SwitcherEntry.app)
         }
     }
 

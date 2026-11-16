@@ -22,6 +22,9 @@ protocol WindowStoreObserver: AnyObject {
 @MainActor
 final class WindowStore {
     private(set) var windows: [CGWindowID: WindowInfo] = [:]
+    /// Running regular apps by pid, kept from workspace notifications: asking NSRunningApplication for
+    /// properties can be a round trip to LaunchServices per app, too slow for every Cmd+Tab.
+    private(set) var apps: [pid_t: NSRunningApplication] = [:]
     weak var observer: WindowStoreObserver?
 
     private var registry = WindowRegistry<CGWindowID, pid_t>()
@@ -74,6 +77,9 @@ final class WindowStore {
 
     /// One app per main-actor turn: at login many apps are busy, and Cmd+Tab must still get through in between.
     private func attachRunningApps() async {
+        for app in NSWorkspace.shared.runningApplications {
+            noteRunning(app)
+        }
         // The frontmost app first, so Cmd+Tab works for what the user is looking at right away.
         if let frontmost = NSWorkspace.shared.frontmostApplication {
             attachAndRefresh(frontmost)
@@ -86,8 +92,12 @@ final class WindowStore {
     }
 
     func orderedItems() -> [SwitcherItem<CGWindowID, pid_t>] {
-        let runningApps = NSWorkspace.shared.runningApplications.filter(isSwitchable).map(\.processIdentifier)
-        return registry.items(runningApps: runningApps)
+        registry.items(runningApps: apps.keys.sorted())
+    }
+
+    /// Keeps `apps` current; an app's activation policy can change after launch, so this runs on activation too.
+    private func noteRunning(_ app: NSRunningApplication) {
+        apps[app.processIdentifier] = isSwitchable(app) ? app : nil
     }
 
     // MARK: - Apps
@@ -156,6 +166,7 @@ final class WindowStore {
     }
 
     private func detach(_ pid: pid_t) {
+        apps[pid] = nil
         watchers[pid] = nil
         unresponsiveSince[pid] = nil
         appsNeedingDiscovery.remove(pid)
@@ -356,6 +367,7 @@ final class WindowStore {
     }
 
     private func appDidActivate(_ app: NSRunningApplication) {
+        noteRunning(app)
         // The user chose this app, so it gets another chance even if it was slow before.
         unresponsiveSince[app.processIdentifier] = nil
         // Attaching late covers apps that weren't ready at launch or became regular apps afterwards.
@@ -385,7 +397,9 @@ final class WindowStore {
         }
         observe(NSWorkspace.didLaunchApplicationNotification) { store, app in
             // Windows restored during launch existed before the watcher, so list them now.
-            if let app { store.attachAndRefresh(app) }
+            guard let app else { return }
+            store.noteRunning(app)
+            store.attachAndRefresh(app)
         }
         observe(NSWorkspace.didTerminateApplicationNotification) { store, app in
             if let app { store.detach(app.processIdentifier) }
