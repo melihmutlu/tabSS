@@ -51,6 +51,7 @@ Other targets: `make test` (unit tests), `make smoke` (checks the installed app 
 - Type to filter the panel by app name or window title.
 - An "icons only" option for screen sharing, since macOS doesn't reliably keep the panel out of recordings.
 - Above 128 windows, drop the least recently used thumbnails instead of the oldest captured.
+- Thumbnails for windows on other Spaces before they are visited. macOS's public capture API can't see them; the undocumented window-server capture AltTab uses could, as an opt-in.
 
 ## Disclaimer
 
