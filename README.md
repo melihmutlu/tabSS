@@ -41,6 +41,7 @@ Other targets: `make test` (unit tests), `make smoke` (checks the installed app 
 - Launch at Login is on after the first run; toggle it from the menu bar icon. Turn it off there before `make uninstall`, or remove tabSS later in System Settings › General › Login Items.
 - While a password field has focus, macOS hides keystrokes from all apps, so Cmd+Tab falls back to the system switcher there.
 - Finding windows on other Spaces and focusing them across Spaces uses a few undocumented macOS functions (the same ones AltTab uses), isolated in `Sources/tabSS/Windows/PrivateAPI.swift`. If a future macOS removes one, that feature falls back to public APIs.
+- Thumbnails are taken when tabSS starts and whenever you leave a window. macOS's public capture API can't see windows on other Spaces or minimized ones, so those show their app icon until you've visited them once, then keep their last picture.
 - Thumbnails stay in memory only. The switcher panel asks to be left out of screen sharing and recordings, but recent macOS versions don't always honor that, so avoid opening it while sharing your whole screen.
 
 ## Future work

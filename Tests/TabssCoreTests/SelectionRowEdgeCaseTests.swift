@@ -2,107 +2,77 @@ import CoreGraphics
 import Testing
 @testable import TabssCore
 
-struct SelectionRowEdgeCaseTests {
-    private func walk(_ start: Selection, _ step: (inout Selection) -> Void, times: Int) -> [Int] {
-        var selection = start
-        return (0..<times).map { _ in
-            step(&selection)
-            return selection.index
-        }
+struct GridPositionTests {
+    @Test func fullRowsAreNotShiftedAndShortRowsAreCentered() {
+        let grid = GridPosition(count: 7, columns: 3)
+        #expect(grid.rows == 3)
+        #expect((0..<6).map(grid.horizontalPosition) == [0, 1, 2, 0, 1, 2])
+        #expect(grid.horizontalPosition(of: 6) == 1)
+        #expect(GridPosition(count: 8, columns: 5).horizontalPosition(of: 5) == 1)
+        #expect(GridPosition(count: 6, columns: 4).horizontalPosition(of: 4) == 1)
     }
 
-    @Test func oneColumnDownAndUpCycleThroughEveryItem() {
-        let start = Selection(count: 3, index: 0, columns: 1)
-        #expect(walk(start, { $0.down() }, times: 4) == [1, 2, 0, 1])
-        #expect(walk(start, { $0.up() }, times: 4) == [2, 1, 0, 2])
+    @Test func nearestStopsPastTheEdges() {
+        let grid = GridPosition(count: 7, columns: 3)
+        #expect(grid.nearest(to: 1, rowDelta: -1) == nil)
+        #expect(grid.nearest(to: 6, rowDelta: 1) == nil)
     }
 
-    @Test func aSingleRowMovesSidewaysLikeTheOtherArrows() {
-        #expect(walk(Selection(count: 4, index: 2, columns: 4), { $0.down() }, times: 3) == [3, 0, 1])
-        #expect(walk(Selection(count: 4, index: 1, columns: 4), { $0.up() }, times: 3) == [0, 3, 2])
-    }
-
-    // 3 columns, 4 items:  0 1 2 / 3
-    @Test func countOneMoreThanColumns() {
-        #expect(walk(Selection(count: 4, index: 0, columns: 3), { $0.down() }, times: 2) == [3, 0])
-        #expect(walk(Selection(count: 4, index: 1, columns: 3), { $0.down() }, times: 1) == [3])  // nothing below: the last tile
-        #expect(walk(Selection(count: 4, index: 2, columns: 3), { $0.down() }, times: 1) == [3])
-        #expect(walk(Selection(count: 4, index: 0, columns: 3), { $0.up() }, times: 2) == [3, 0])
-        #expect(walk(Selection(count: 4, index: 1, columns: 3), { $0.up() }, times: 1) == [1])  // its column has no other tile
-        #expect(walk(Selection(count: 4, index: 2, columns: 3), { $0.up() }, times: 1) == [2])
-    }
-
-    @Test func columnsBeyondCountIsASingleRow() {
-        #expect(walk(Selection(count: 3, index: 0, columns: 10), { $0.down() }, times: 3) == [1, 2, 0])
-        #expect(walk(Selection(count: 3, index: 0, columns: 10), { $0.up() }, times: 3) == [2, 1, 0])
+    // 4 columns, 7 items:  0 1 2 3 / ½ 4 5 6 ½  — tile 1 sits exactly between 4 and 5.
+    @Test func tiesGoToTheLeftTile() {
+        #expect(GridPosition(count: 7, columns: 4).nearest(to: 1, rowDelta: 1) == 4)
+        #expect(GridPosition(count: 7, columns: 4).nearest(to: 2, rowDelta: 1) == 5)
     }
 
     @Test func nonPositiveColumnsBehaveAsOneColumn() {
-        #expect(Selection(count: 3, index: 0, columns: 0).columns == 1)
+        #expect(GridPosition(count: 3, columns: 0).columns == 1)
         #expect(Selection(count: 3, index: 0, columns: -2).columns == 1)
-        #expect(walk(Selection(count: 3, index: 0, columns: 0), { $0.down() }, times: 3) == [1, 2, 0])
     }
 
-    @Test func singleItemIgnoresRows() {
-        var selection = Selection(count: 1, index: 0, columns: 3)
-        selection.up()
-        selection.down()
-        #expect(selection.index == 0)
-    }
-
-    @Test func fullLastRowUpWrapsToSameColumn() {
-        // 3 columns, 6 items:  0 1 2 / 3 4 5
-        #expect(walk(Selection(count: 6, index: 2, columns: 3), { $0.up() }, times: 2) == [5, 2])
-        #expect(walk(Selection(count: 6, index: 2, columns: 3), { $0.down() }, times: 2) == [5, 2])
-    }
-
-    /// Wherever a tile is drawn directly above or below, Up and Down land on it.
-    @Test func verticalMovesFollowTheDrawnColumns() {
+    /// The arrow keys and the drawing share the same positions: every vertical move lands on the drawn tile
+    /// closest to where it started.
+    @Test(arguments: [(7, 3), (8, 5), (6, 4), (13, 5)])
+    func verticalMovesFollowTheDrawing(count: Int, columns: Int) {
         let metrics = TileLayout.Metrics()
-        let width = 3 * 240 + 2 * metrics.tileSpacing + 2 * metrics.panelPadding
-        let layout = TileLayout(itemCount: 7, maxPanelSize: CGSize(width: width, height: 2000), metrics: metrics)
-        #expect(layout.columns == 3)
-        // 0 1 2 / 3 4 5 / 6
-        for start in 0..<7 {
-            var down = Selection(count: 7, index: start, columns: layout.columns)
-            down.down()
-            if start + 3 < 7 {
-                #expect(layout.tileFrames[down.index].minX == layout.tileFrames[start].minX, "down from \(start)")
+        let width = CGFloat(columns) * 240 + CGFloat(columns - 1) * metrics.tileSpacing + 2 * metrics.panelPadding
+        let layout = TileLayout(itemCount: count, maxPanelSize: CGSize(width: width, height: 5000), metrics: metrics)
+        #expect(layout.columns == columns)
+        let grid = GridPosition(count: count, columns: columns)
+        for start in 0..<count {
+            for delta in [-1, 1] {
+                guard let target = grid.nearest(to: start, rowDelta: delta) else { continue }
+                let distance = abs(layout.tileFrames[target].midX - layout.tileFrames[start].midX)
+                let best = grid.indices(inRow: grid.row(of: target))
+                    .map { abs(layout.tileFrames[$0].midX - layout.tileFrames[start].midX) }
+                    .min()!
+                #expect(distance <= best + 1, "from \(start) by \(delta)")
             }
-            var up = Selection(count: 7, index: start, columns: layout.columns)
-            up.up()
-            #expect(layout.tileFrames[up.index].minX == layout.tileFrames[start].minX, "up from \(start)")
         }
-    }
-
-    // 3 columns, 7 items:  0 1 2 / 3 4 5 / 6
-    @Test func downIntoAShortRowPicksTheLastTileAndUpRoundTrips() {
-        #expect(walk(Selection(count: 7, index: 4, columns: 3), { $0.down() }, times: 2) == [6, 0])
-        #expect(walk(Selection(count: 7, index: 1, columns: 3), { $0.up() }, times: 2) == [4, 1])
     }
 }
 
 struct SwitcherStateMachineRowTests {
     private var machine = SwitcherStateMachine()
 
-    // 3 columns, 7 items:  0 1 2 / 3 4 5 / 6
+    // 3 columns, 7 items:  0 1 2 / 3 4 5 / . 6 .
     @Test mutating func reverseOpenThenUpAndDown() {
         _ = machine.handle(.open(reverse: true, itemCount: 7, firstItemIsFocused: true, columns: 3))
         #expect(machine.selectedIndex == 6)
         #expect(machine.handle(.command(.up)) == [])  // armed: tracked silently
-        #expect(machine.selectedIndex == 3)
-        #expect(machine.handle(.showDelayElapsed(session: 1)) == [.show(selectedIndex: 3)])
-        #expect(machine.handle(.command(.down)) == [.select(index: 6)])
-        #expect(machine.handle(.command(.down)) == [.select(index: 0)])
-        #expect(machine.handle(.command(.up)) == [.select(index: 6)])
-        #expect(machine.handle(.command(.commit)) == [.hide, .activate(index: 6)])
+        #expect(machine.selectedIndex == 4)
+        #expect(machine.handle(.showDelayElapsed(session: 1)) == [.show(selectedIndex: 4)])
+        #expect(machine.handle(.command(.up)) == [.select(index: 1)])
+        #expect(machine.handle(.command(.up)) == [])  // top edge
+        #expect(machine.handle(.command(.down)) == [.select(index: 4)])
+        #expect(machine.handle(.command(.commit)) == [.hide, .activate(index: 4)])
     }
 
-    @Test mutating func withoutColumnsUpAndDownMoveSideways() {
+    @Test mutating func withoutColumnsUpAndDownDoNothing() {
         _ = machine.handle(.open(reverse: false, itemCount: 5, firstItemIsFocused: true))
         _ = machine.handle(.showDelayElapsed(session: 1))
-        #expect(machine.handle(.command(.down)) == [.select(index: 2)])
-        #expect(machine.handle(.command(.up)) == [.select(index: 1)])
+        #expect(machine.handle(.command(.down)) == [])
+        #expect(machine.handle(.command(.up)) == [])
+        #expect(machine.selectedIndex == 1)
     }
 
     @Test mutating func columnsDoNotLeakIntoTheNextSession() {
@@ -110,7 +80,7 @@ struct SwitcherStateMachineRowTests {
         _ = machine.handle(.command(.cancel))
         _ = machine.handle(.open(reverse: false, itemCount: 6, firstItemIsFocused: true))
         _ = machine.handle(.command(.down))
-        #expect(machine.selectedIndex == 2)  // single row again: Down moves to the next tile, not two ahead
+        #expect(machine.selectedIndex == 1)
     }
 
     @Test mutating func upAndDownWhileIdleDoNothing() {

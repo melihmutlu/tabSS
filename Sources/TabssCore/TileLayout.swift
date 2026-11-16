@@ -91,14 +91,12 @@ public struct TileLayout: Equatable, Sendable {
 
     private static func frames(count: Int, grid: Grid, metrics: Metrics) -> [CGRect] {
         let step = CGSize(width: grid.tileSize.width + metrics.tileSpacing, height: grid.tileSize.height + metrics.tileSpacing)
+        let positions = GridPosition(count: count, columns: grid.columns)
         return (0..<count).map { index in
-            let row = index / grid.columns
-            // Left-aligned rows keep a short last row in the same columns Up and Down move through.
-            let column = index % grid.columns
-            return CGRect(
+            CGRect(
                 origin: CGPoint(
-                    x: metrics.panelPadding + CGFloat(column) * step.width,
-                    y: metrics.panelPadding + CGFloat(row) * step.height
+                    x: metrics.panelPadding + (positions.horizontalPosition(of: index) * step.width).rounded(),
+                    y: metrics.panelPadding + CGFloat(positions.row(of: index)) * step.height
                 ),
                 size: grid.tileSize
             )

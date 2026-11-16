@@ -280,7 +280,7 @@ struct SwitcherControllerTests {
     }
 
     @Test func snapshotColumnsDriveUpAndDown() {
-        // 2 columns, 5 items:  A B / C D / E
+        // 2 columns, 5 items:  A B / C D / . E .
         var activated: [String] = []
         let controller = SwitcherController<String>(dependencies: .init(
             snapshot: { .init(entries: ["A", "B", "C", "D", "E"], firstItemIsFocused: true, columns: 2) },
@@ -294,8 +294,9 @@ struct SwitcherControllerTests {
         ))
         controller.handle(.open(reverse: false), session: 1)  // B
         controller.handle(.command(.down), session: 1)        // D
-        controller.handle(.command(.down), session: 1)        // nothing below D: the last tile, E
-        controller.handle(.command(.up), session: 1)          // C
+        controller.handle(.command(.down), session: 1)        // E, centered below C and D
+        controller.handle(.command(.down), session: 1)        // bottom edge: stays on E
+        controller.handle(.command(.up), session: 1)          // C (tie between C and D goes left)
         controller.handle(.command(.commit), session: 1)
         #expect(activated == ["C"])
     }

@@ -66,26 +66,41 @@ struct SelectionTests {
 }
 
 struct SelectionRowTests {
-    // 3 columns, 7 items:  0 1 2 / 3 4 5 / 6
-    @Test func downMovesARowThenWrapsToTheTopOfTheColumn() {
-        var selection = Selection(count: 7, index: 0, columns: 3)
-        selection.down()
-        #expect(selection.index == 3)
-        selection.down()
-        #expect(selection.index == 6)
-        selection.down()
-        #expect(selection.index == 0)
+    private func walk(_ start: Selection, _ step: (inout Selection) -> Void, times: Int) -> [Int] {
+        var selection = start
+        return (0..<times).map { _ in
+            step(&selection)
+            return selection.index
+        }
     }
 
-    @Test func upMovesARowThenWrapsToTheLowestTileInTheColumn() {
-        var selection = Selection(count: 7, index: 4, columns: 3)
-        selection.up()
-        #expect(selection.index == 1)
-        selection.up()
-        #expect(selection.index == 4)  // column 1 has no tile in the short last row
-        selection.select(0)
-        selection.up()
-        #expect(selection.index == 6)
+    // 3 columns, 7 items, last row centered:  0 1 2 / 3 4 5 / . 6 .
+    @Test func downAndUpGoToTheNearestDrawnTileAndStopAtTheEdges() {
+        #expect(walk(Selection(count: 7, index: 1, columns: 3), { $0.down() }, times: 3) == [4, 6, 6])
+        #expect(walk(Selection(count: 7, index: 6, columns: 3), { $0.up() }, times: 3) == [4, 1, 1])
+        #expect(walk(Selection(count: 7, index: 3, columns: 3), { $0.down() }, times: 1) == [6])
+        #expect(walk(Selection(count: 7, index: 5, columns: 3), { $0.down() }, times: 1) == [6])
+    }
+
+    // 5 columns, 8 items:  0 1 2 3 4 / . 5 6 7 .
+    @Test func aShortRowUnderAWideRowMapsByPosition() {
+        let below = (0..<5).map { start -> Int in
+            var selection = Selection(count: 8, index: start, columns: 5)
+            selection.down()
+            return selection.index
+        }
+        #expect(below == [5, 5, 6, 7, 7])
+        let above = (5..<8).map { start -> Int in
+            var selection = Selection(count: 8, index: start, columns: 5)
+            selection.up()
+            return selection.index
+        }
+        #expect(above == [1, 2, 3])
+    }
+
+    @Test func aSingleRowHasNowhereToGo() {
+        #expect(walk(Selection(count: 4, index: 2), { $0.down() }, times: 1) == [2])
+        #expect(walk(Selection(count: 4, index: 2), { $0.up() }, times: 1) == [2])
     }
 
     @Test func emptySelectionIgnoresRows() {

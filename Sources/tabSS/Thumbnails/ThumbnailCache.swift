@@ -101,13 +101,21 @@ final class ThumbnailCache {
     }
 
     private func captureImage(of id: CGWindowID) async -> CGImage? {
-        // Windows on other Spaces keep their contents and capture fine; minimized ones (on no Space) capture blank.
-        guard let facts = WindowServer.facts(for: id), facts.isOnScreen || PrivateAPI.isOnAnySpace(id) == true else {
-            logger.debug("skip \(id): minimized or gone")
+        // ScreenCaptureKit can't capture minimized windows or windows on other Spaces; they keep their last image.
+        guard let facts = WindowServer.facts(for: id), facts.isOnScreen else {
+            logger.debug("skip \(id): not on screen")
             return nil
         }
-        guard let window = await shareableWindow(id) else {
+        let window: SCWindow
+        switch await shareableWindow(id) {
+        case let .found(found):
+            window = found
+        case .unavailable:
             logger.debug("skip \(id): not in shareable content")
+            return nil
+        case .tryLater:
+            // Startup adds many windows at once; the throttled ones are captured right after the next fetch.
+            retryLater(id)
             return nil
         }
         // Never larger than the window itself at 2x, so tiny windows don't become full-size images.
@@ -130,20 +138,35 @@ final class ThumbnailCache {
         }
     }
 
+    private enum ShareableLookup {
+        case found(SCWindow)
+        case unavailable
+        case tryLater
+    }
+
     /// Shareable content is fetched only when a window isn't in the last fetch, and at most once a second.
-    private func shareableWindow(_ id: CGWindowID) async -> SCWindow? {
-        if let window = shareableWindows[id] { return window }
-        if let lastFetch, ContinuousClock.now - lastFetch < Self.minimumFetchInterval { return nil }
+    private func shareableWindow(_ id: CGWindowID) async -> ShareableLookup {
+        if let window = shareableWindows[id] { return .found(window) }
+        if let lastFetch, ContinuousClock.now - lastFetch < Self.minimumFetchInterval { return .tryLater }
         lastFetch = .now
-        guard let content = try? await SCShareableContent.excludingDesktopWindows(true, onScreenWindowsOnly: false) else { return nil }
+        guard let content = try? await SCShareableContent.excludingDesktopWindows(true, onScreenWindowsOnly: true) else {
+            return .unavailable
+        }
         shareableWindows = Dictionary(content.windows.map { ($0.windowID, $0) }, uniquingKeysWith: { first, _ in first })
         unshareableWindows.subtract(shareableWindows.keys)
-        if let window = shareableWindows[id] { return window }
-        // Only a window that is still around was really left out on purpose.
-        if isKnown(id), WindowServer.facts(for: id) != nil {
+        if let window = shareableWindows[id] { return .found(window) }
+        // Only a window that is still around and on screen was really left out on purpose.
+        if isKnown(id), WindowServer.facts(for: id)?.isOnScreen == true {
             unshareableWindows.insert(id)
         }
-        return nil
+        return .unavailable
+    }
+
+    private func retryLater(_ id: CGWindowID) {
+        Task { [weak self] in
+            try? await Task.sleep(for: Self.minimumFetchInterval)
+            self?.capture(id)
+        }
     }
 }
 

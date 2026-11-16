@@ -15,13 +15,13 @@ struct TileLayoutTests {
         #expect(layout.panelSize.width == layout.tileFrames[2].maxX + metrics.panelPadding)
     }
 
-    @Test func wrapsIntoRowsWithTheLastRowLeftAligned() {
+    @Test func wrapsIntoRowsAndCentersTheLastRow() {
         let width = 3 * 240 + 2 * metrics.tileSpacing + 2 * metrics.panelPadding
         let layout = TileLayout(itemCount: 4, maxPanelSize: CGSize(width: width, height: 2000))
         #expect(layout.columns == 3)
         let lastRowTile = layout.tileFrames[3]
         #expect(lastRowTile.minY > layout.tileFrames[0].maxY)
-        #expect(lastRowTile.minX == layout.tileFrames[0].minX)
+        #expect(abs(lastRowTile.midX - layout.panelSize.width / 2) < 0.001)
     }
 
     @Test func neverShrinksBelowMinimumScale() {
@@ -102,12 +102,13 @@ struct TileLayoutTests {
         }
     }
 
-    @Test func rowsStartAtThePaddingAndFullRowsSpanThePanel() {
+    @Test func fullRowsSpanThePanelAndShortRowsAreCentered() {
         let width = 3 * 240 + 2 * metrics.tileSpacing + 2 * metrics.panelPadding
         let layout = TileLayout(itemCount: 5, maxPanelSize: CGSize(width: width, height: 5000))
         #expect(layout.tileFrames[0].minX == metrics.panelPadding)
         #expect(layout.tileFrames[2].maxX == layout.panelSize.width - metrics.panelPadding)
-        #expect(layout.tileFrames[3].minX == metrics.panelPadding)
+        let lastRowMid = (layout.tileFrames[3].minX + layout.tileFrames[4].maxX) / 2
+        #expect(abs(lastRowMid - layout.panelSize.width / 2) < 0.5)
     }
 
     @Test func hitTestingEdgesAndGaps() {
