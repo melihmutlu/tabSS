@@ -1,6 +1,6 @@
-<sub>This code has been vibecoded and not reviewed by any human. Use at your own risk.</sub>
-
 # tabSS
+
+<sub><sup>This code has been vibecoded and not reviewed by any human. Use at your own risk.</sup></sub>
 
 A small, fast replacement for the macOS Cmd+Tab switcher that switches between **windows**, not apps.
 
