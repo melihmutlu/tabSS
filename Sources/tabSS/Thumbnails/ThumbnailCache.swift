@@ -27,7 +27,7 @@ final class ThumbnailCache {
     private var lastFetch: ContinuousClock.Instant?
     private var isPermitted = false
     private var lastPermissionCheck: ContinuousClock.Instant?
-    // On screen but never offered for capture (e.g. windows that opt out of screen sharing).
+    // Never offered for capture (e.g. windows that opt out of screen sharing).
     private var unshareableWindows: Set<CGWindowID> = []
     private var queue: [CGWindowID] = []
     private var isCapturing = false
@@ -54,10 +54,10 @@ final class ThumbnailCache {
         queue.removeAll()
     }
 
-    /// For a window about to lose focus while it is still on screen, e.g. right before switching away from it.
+    /// For a window about to lose focus, e.g. right before switching away from it.
     func capture(_ id: CGWindowID) {
         guard hasPermission(), isKnown(id), !queue.contains(id), !unshareableWindows.contains(id) else {
-            logger.debug("skip \(id): permitted=\(self.isPermitted) known=\(self.isKnown(id)) unshareable=\(self.unshareableWindows.contains(id))")
+            logger.debug("skip \(id): permitted=\(self.isPermitted) known=\(self.isKnown(id)) queued=\(self.queue.contains(id)) unshareable=\(self.unshareableWindows.contains(id))")
             return
         }
         if let last = lastCaptures[id], ContinuousClock.now - last < Self.minimumCaptureInterval { return }
@@ -101,7 +101,6 @@ final class ThumbnailCache {
     }
 
     private func captureImage(of id: CGWindowID) async -> CGImage? {
-        // Minimized windows and windows on other Spaces would capture blank; keep their last image instead.
         // Windows on other Spaces keep their contents and capture fine; minimized ones (on no Space) capture blank.
         guard let facts = WindowServer.facts(for: id), facts.isOnScreen || PrivateAPI.isOnAnySpace(id) == true else {
             logger.debug("skip \(id): minimized or gone")

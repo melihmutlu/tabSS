@@ -16,13 +16,14 @@ final class SwitcherPanel {
     var onClick: ((Int) -> Void)?
 
     private static let cornerRadius: CGFloat = 20
-    private static let backgroundOpacity: CGFloat = 0.85
+    // For the pre-Liquid Glass material only; tiles and text stay fully opaque.
+    private static let legacyBackgroundOpacity: CGFloat = 0.85
     // Narrower than tall: long rows are hard to scan, so tiles wrap into more rows instead.
     private static let maxWidthFraction: CGFloat = 0.6
     private static let maxHeightFraction: CGFloat = 0.9
 
     private let panel: NSPanel
-    private let background = NSVisualEffectView()
+    private let background: NSView
     private let gridView = SwitcherGridView()
     private let metrics = TileLayout.Metrics()
 
@@ -39,18 +40,21 @@ final class SwitcherPanel {
         // Thumbnails show other windows' contents; ask to be left out of screen sharing (best effort on recent macOS).
         panel.sharingType = .none
 
-        // The system material matches the native switcher and adapts to light/dark, Reduce Transparency and Increase Contrast.
-        background.material = .hudWindow
-        background.blendingMode = .behindWindow
-        background.state = .active
-        background.maskImage = Self.roundedMask(radius: Self.cornerRadius)
-        // Only the material is faded, so tiles and text stay fully opaque.
-        background.alphaValue = Self.backgroundOpacity
-
-        let content = NSView()
-        content.addSubview(background)
-        content.addSubview(gridView)
-        panel.contentView = content
+        // System materials adapt to light/dark, Reduce Transparency and Increase Contrast on their own.
+        if #available(macOS 26, *) {
+            let glass = NSGlassEffectView()
+            glass.style = .regular
+            glass.cornerRadius = Self.cornerRadius
+            glass.contentView = gridView
+            background = glass
+            panel.contentView = glass
+        } else {
+            background = Self.legacyBackground()
+            let content = NSView()
+            content.addSubview(background)
+            content.addSubview(gridView)
+            panel.contentView = content
+        }
 
         gridView.onHover = { [weak self] in self?.onHover?($0) }
         gridView.onClick = { [weak self] in self?.onClick?($0) }
@@ -74,6 +78,11 @@ final class SwitcherPanel {
         panel.setFrame(CGRect(origin: origin, size: size), display: false)
         background.frame = CGRect(origin: .zero, size: size)
         gridView.frame = CGRect(origin: .zero, size: size)
+        if #unavailable(macOS 26) {
+            // Fading the material would also undo Reduce Transparency's opaque background.
+            let reduceTransparency = NSWorkspace.shared.accessibilityDisplayShouldReduceTransparency
+            background.alphaValue = reduceTransparency ? 1 : Self.legacyBackgroundOpacity
+        }
         panel.orderFrontRegardless()
     }
 
@@ -88,6 +97,15 @@ final class SwitcherPanel {
 
     private func maxPanelSize(on screen: NSScreen) -> CGSize {
         CGSize(width: screen.visibleFrame.width * Self.maxWidthFraction, height: screen.visibleFrame.height * Self.maxHeightFraction)
+    }
+
+    private static func legacyBackground() -> NSVisualEffectView {
+        let material = NSVisualEffectView()
+        material.material = .hudWindow
+        material.blendingMode = .behindWindow
+        material.state = .active
+        material.maskImage = roundedMask(radius: cornerRadius)
+        return material
     }
 
     private static func roundedMask(radius: CGFloat) -> NSImage {

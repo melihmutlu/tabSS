@@ -93,13 +93,11 @@ public struct TileLayout: Equatable, Sendable {
         let step = CGSize(width: grid.tileSize.width + metrics.tileSpacing, height: grid.tileSize.height + metrics.tileSpacing)
         return (0..<count).map { index in
             let row = index / grid.columns
+            // Left-aligned rows keep a short last row in the same columns Up and Down move through.
             let column = index % grid.columns
-            let itemsInRow = min(grid.columns, count - row * grid.columns)
-            // Center a partially filled last row, like the native switcher.
-            let rowInset = (CGFloat(grid.columns - itemsInRow) * step.width / 2).rounded()
             return CGRect(
                 origin: CGPoint(
-                    x: metrics.panelPadding + rowInset + CGFloat(column) * step.width,
+                    x: metrics.panelPadding + CGFloat(column) * step.width,
                     y: metrics.panelPadding + CGFloat(row) * step.height
                 ),
                 size: grid.tileSize

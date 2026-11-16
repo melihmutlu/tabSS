@@ -257,13 +257,20 @@ final class WindowStore {
             return
         }
         var focused: CGWindowID?
+        var answered = false
         if let watcher = watchers[pid] {
-            callingApp(pid) { focused = AX.element(watcher.element, kAXFocusedWindowAttribute).flatMap { addWindow($0, of: watcher) } }
+            callingApp(pid) {
+                let reply = AX.elementReply(watcher.element, kAXFocusedWindowAttribute)
+                answered = reply.answered
+                focused = reply.element.flatMap { addWindow($0, of: watcher) }
+            }
         }
-        reportFocusLeft(registry.activate(pid, focusedWindow: focused ?? frontmostKnownWindow(of: pid)))
+        // "No focused window" is a real answer (e.g. Finder after clicking the desktop); only silence gets a stand-in.
+        let standIn = answered ? nil : frontmostKnownWindow(of: pid)
+        reportFocusLeft(registry.activate(pid, focusedWindow: focused ?? standIn))
     }
 
-    /// When an app is too slow to say which window is focused (Electron apps often are), its frontmost
+    /// When an app doesn't say which window is focused in time (Electron apps often don't), its frontmost
     /// window in the window server's stacking order is the best stand-in, and costs no call into the app.
     private func frontmostKnownWindow(of pid: pid_t) -> CGWindowID? {
         WindowServer.onScreenWindowIDsFrontToBack().first { registry.owner(of: $0) == pid }

@@ -15,13 +15,13 @@ struct TileLayoutTests {
         #expect(layout.panelSize.width == layout.tileFrames[2].maxX + metrics.panelPadding)
     }
 
-    @Test func wrapsIntoRowsAndCentersLastRow() {
+    @Test func wrapsIntoRowsWithTheLastRowLeftAligned() {
         let width = 3 * 240 + 2 * metrics.tileSpacing + 2 * metrics.panelPadding
         let layout = TileLayout(itemCount: 4, maxPanelSize: CGSize(width: width, height: 2000))
         #expect(layout.columns == 3)
         let lastRowTile = layout.tileFrames[3]
         #expect(lastRowTile.minY > layout.tileFrames[0].maxY)
-        #expect(abs(lastRowTile.midX - layout.panelSize.width / 2) < 0.001)
+        #expect(lastRowTile.minX == layout.tileFrames[0].minX)
     }
 
     @Test func neverShrinksBelowMinimumScale() {
@@ -102,13 +102,12 @@ struct TileLayoutTests {
         }
     }
 
-    @Test func fullRowsAreNotIndented() {
+    @Test func rowsStartAtThePaddingAndFullRowsSpanThePanel() {
         let width = 3 * 240 + 2 * metrics.tileSpacing + 2 * metrics.panelPadding
         let layout = TileLayout(itemCount: 5, maxPanelSize: CGSize(width: width, height: 5000))
         #expect(layout.tileFrames[0].minX == metrics.panelPadding)
         #expect(layout.tileFrames[2].maxX == layout.panelSize.width - metrics.panelPadding)
-        let lastRowMid = (layout.tileFrames[3].minX + layout.tileFrames[4].maxX) / 2
-        #expect(abs(lastRowMid - layout.panelSize.width / 2) < 0.001)
+        #expect(layout.tileFrames[3].minX == metrics.panelPadding)
     }
 
     @Test func hitTestingEdgesAndGaps() {
@@ -121,7 +120,7 @@ struct TileLayoutTests {
     }
 
     @Test(arguments: [(9, 700.0), (17, 900.0), (40, 800.0), (75, 1000.0), (200, 1100.0)])
-    func shrunkLayoutsStayPixelAlignedCenteredAndInBounds(count: Int, height: CGFloat) {
+    func shrunkLayoutsStayPixelAlignedAndInBounds(count: Int, height: CGFloat) {
         let maxSize = CGSize(width: 1300, height: height)
         let layout = TileLayout(itemCount: count, maxPanelSize: maxSize)
         #expect(layout.scale >= metrics.minimumScale && layout.scale <= 1)
@@ -137,10 +136,6 @@ struct TileLayoutTests {
             #expect(frame.maxX <= layout.panelSize.width - metrics.panelPadding + 0.001)
             #expect(frame.maxY <= layout.panelSize.height - metrics.panelPadding + 0.001)
         }
-        let lastRowY = layout.tileFrames.last!.minY
-        let lastRow = layout.tileFrames.filter { $0.minY == lastRowY }
-        let lastRowMid = (lastRow.first!.minX + lastRow.last!.maxX) / 2
-        #expect(abs(lastRowMid - layout.panelSize.width / 2) <= 0.5)
     }
 
     @Test func shrinkingStopsAtFirstFittingStep() {
