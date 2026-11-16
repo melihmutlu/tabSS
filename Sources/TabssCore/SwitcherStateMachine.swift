@@ -1,5 +1,5 @@
 public enum SwitcherEvent: Equatable, Sendable {
-    case open(reverse: Bool, itemCount: Int, firstItemIsFocused: Bool)
+    case open(reverse: Bool, itemCount: Int, firstItemIsFocused: Bool, columns: Int? = nil)
     case command(SwitcherCommand)
     case showDelayElapsed(session: Int)
     case pointerHovered(index: Int)
@@ -43,8 +43,8 @@ public struct SwitcherStateMachine: Sendable {
 
     public mutating func handle(_ event: SwitcherEvent) -> [SwitcherEffect] {
         switch (phase, event) {
-        case let (.idle, .open(reverse, itemCount, firstItemIsFocused)):
-            return open(itemCount: itemCount, reverse: reverse, firstItemIsFocused: firstItemIsFocused)
+        case let (.idle, .open(reverse, itemCount, firstItemIsFocused, columns)):
+            return open(itemCount: itemCount, reverse: reverse, firstItemIsFocused: firstItemIsFocused, columns: columns)
         case (.idle, _):
             return []
         case let (.armed(selection), .showDelayElapsed(session)) where session == self.session:
@@ -66,12 +66,12 @@ public struct SwitcherStateMachine: Sendable {
         }
     }
 
-    private mutating func open(itemCount: Int, reverse: Bool, firstItemIsFocused: Bool) -> [SwitcherEffect] {
+    private mutating func open(itemCount: Int, reverse: Bool, firstItemIsFocused: Bool, columns: Int?) -> [SwitcherEffect] {
         guard itemCount > 0 else { return [] }
         // Forward starts at the previous window; if nothing is focused (e.g. its last window just closed), at the first.
         let initialIndex = reverse ? itemCount - 1 : (firstItemIsFocused ? 1 : 0)
         session += 1
-        phase = .armed(Selection(count: itemCount, index: initialIndex))
+        phase = .armed(Selection(count: itemCount, index: initialIndex, columns: columns))
         return [.scheduleShow(session: session, delay: Self.showDelay)]
     }
 
@@ -79,6 +79,8 @@ public struct SwitcherStateMachine: Sendable {
         switch command {
         case .next: move { $0.next() }
         case .previous: move { $0.previous() }
+        case .up: move { $0.up() }
+        case .down: move { $0.down() }
         case .cancel: finish(activating: false)
         case .commit: finish(activating: true)
         }

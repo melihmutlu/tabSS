@@ -1,5 +1,6 @@
 import AppKit
 import ApplicationServices
+import OSLog
 import TabssCore
 
 struct WindowInfo {
@@ -21,6 +22,7 @@ protocol WindowStoreObserver: AnyObject {
 /// so opening the switcher only reads memory.
 @MainActor
 final class WindowStore {
+    private let logger = Logger(subsystem: "local.tabss", category: "Windows")
     private(set) var windows: [CGWindowID: WindowInfo] = [:]
     /// Running regular apps by pid, kept from workspace notifications: asking NSRunningApplication for
     /// properties can be a round trip to LaunchServices per app, too slow for every Cmd+Tab.
@@ -192,7 +194,7 @@ final class WindowStore {
             let pid = watcher.app.processIdentifier
             for id in registry.windows(of: pid) {
                 if !existing.contains(id) {
-                    removeWindow(id)
+                    removeWindow(id, reason: "unknown to the window server")
                 } else if !callingApp(pid, { removeGhost(id) }) {
                     break
                 }
@@ -229,10 +231,11 @@ final class WindowStore {
         guard let window = windows[id],
               WindowDiscovery.isGhost(id, element: window.element, appIsHidden: window.app.isHidden)
         else { return }
-        removeWindow(id)
+        removeWindow(id, reason: "no Space")
     }
 
     private func markUnresponsive(_ pid: pid_t) {
+        logger.debug("app \(pid) marked unresponsive")
         unresponsiveSince[pid] = .now
     }
 
@@ -257,7 +260,13 @@ final class WindowStore {
         if let watcher = watchers[pid] {
             callingApp(pid) { focused = AX.element(watcher.element, kAXFocusedWindowAttribute).flatMap { addWindow($0, of: watcher) } }
         }
-        reportFocusLeft(registry.activate(pid, focusedWindow: focused))
+        reportFocusLeft(registry.activate(pid, focusedWindow: focused ?? frontmostKnownWindow(of: pid)))
+    }
+
+    /// When an app is too slow to say which window is focused (Electron apps often are), its frontmost
+    /// window in the window server's stacking order is the best stand-in, and costs no call into the app.
+    private func frontmostKnownWindow(of pid: pid_t) -> CGWindowID? {
+        WindowServer.onScreenWindowIDsFrontToBack().first { registry.owner(of: $0) == pid }
     }
 
     // MARK: - Windows
@@ -289,7 +298,8 @@ final class WindowStore {
         return id
     }
 
-    private func removeWindow(_ id: CGWindowID) {
+    private func removeWindow(_ id: CGWindowID, reason: StaticString) {
+        logger.debug("remove \(id): \(reason, privacy: .public)")
         registry.remove(id)
         forget(id)
     }
@@ -337,7 +347,7 @@ final class WindowStore {
                 callingApp(pid) { removeGhost(previous) }  // switching tabs sends the previous tab to the background
             }
         case let .windowDestroyed(element):
-            if let id = knownID(of: element, in: pid) { removeWindow(id) }
+            if let id = knownID(of: element, in: pid) { removeWindow(id, reason: "destroyed") }
         case let .windowTitleChanged(element):
             if let id = knownID(of: element, in: pid) {
                 callingApp(pid) { windows[id]?.title = title(of: element) }

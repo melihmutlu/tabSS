@@ -1,4 +1,5 @@
 import CoreGraphics
+import OSLog
 import ScreenCaptureKit
 import TabssCore
 
@@ -18,6 +19,7 @@ final class ThumbnailCache {
     private static let maxImages = 128
     private static let permissionRecheckInterval: Duration = .seconds(5)
 
+    private let logger = Logger(subsystem: "local.tabss", category: "Thumbnails")
     private weak var store: WindowStore?
     private var images: [CGWindowID: CGImage] = [:]
     private var lastCaptures: [CGWindowID: ContinuousClock.Instant] = [:]
@@ -43,6 +45,7 @@ final class ThumbnailCache {
     /// Revoking Screen Recording should also take away what was captured before.
     func discardIfPermissionRevoked() {
         guard isPermitted, !ScreenRecordingPermission.isGranted else { return }
+        logger.debug("permission revoked: dropping \(self.images.count) thumbnails")
         isPermitted = false
         lastPermissionCheck = .now
         images.removeAll()
@@ -53,7 +56,10 @@ final class ThumbnailCache {
 
     /// For a window about to lose focus while it is still on screen, e.g. right before switching away from it.
     func capture(_ id: CGWindowID) {
-        guard hasPermission(), isKnown(id), !queue.contains(id), !unshareableWindows.contains(id) else { return }
+        guard hasPermission(), isKnown(id), !queue.contains(id), !unshareableWindows.contains(id) else {
+            logger.debug("skip \(id): permitted=\(self.isPermitted) known=\(self.isKnown(id)) unshareable=\(self.unshareableWindows.contains(id))")
+            return
+        }
         if let last = lastCaptures[id], ContinuousClock.now - last < Self.minimumCaptureInterval { return }
         queue.append(id)
         guard !isCapturing else { return }
@@ -90,12 +96,21 @@ final class ThumbnailCache {
         guard images.count > Self.maxImages,
               let oldest = lastCaptures.filter({ images[$0.key] != nil }).min(by: { $0.value < $1.value })?.key
         else { return }
+        logger.debug("evict \(oldest): over \(Self.maxImages) thumbnails")
         images[oldest] = nil
     }
 
     private func captureImage(of id: CGWindowID) async -> CGImage? {
         // Minimized windows and windows on other Spaces would capture blank; keep their last image instead.
-        guard let facts = WindowServer.facts(for: id), facts.isOnScreen, let window = await shareableWindow(id) else { return nil }
+        // Windows on other Spaces keep their contents and capture fine; minimized ones (on no Space) capture blank.
+        guard let facts = WindowServer.facts(for: id), facts.isOnScreen || PrivateAPI.isOnAnySpace(id) == true else {
+            logger.debug("skip \(id): minimized or gone")
+            return nil
+        }
+        guard let window = await shareableWindow(id) else {
+            logger.debug("skip \(id): not in shareable content")
+            return nil
+        }
         // Never larger than the window itself at 2x, so tiny windows don't become full-size images.
         let bounds = facts.bounds.size
         let limit = CGSize(width: min(Self.maxPixelSize.width, bounds.width * 2), height: min(Self.maxPixelSize.height, bounds.height * 2))
@@ -108,7 +123,12 @@ final class ThumbnailCache {
         configuration.showsCursor = false
         configuration.ignoreShadowsSingleWindow = true
         let filter = SCContentFilter(desktopIndependentWindow: window)
-        return try? await SCScreenshotManager.captureImage(contentFilter: filter, configuration: configuration)
+        do {
+            return try await SCScreenshotManager.captureImage(contentFilter: filter, configuration: configuration)
+        } catch {
+            logger.debug("capture \(id) failed: \(error.localizedDescription, privacy: .public)")
+            return nil
+        }
     }
 
     /// Shareable content is fetched only when a window isn't in the last fetch, and at most once a second.
@@ -116,12 +136,12 @@ final class ThumbnailCache {
         if let window = shareableWindows[id] { return window }
         if let lastFetch, ContinuousClock.now - lastFetch < Self.minimumFetchInterval { return nil }
         lastFetch = .now
-        guard let content = try? await SCShareableContent.excludingDesktopWindows(true, onScreenWindowsOnly: true) else { return nil }
+        guard let content = try? await SCShareableContent.excludingDesktopWindows(true, onScreenWindowsOnly: false) else { return nil }
         shareableWindows = Dictionary(content.windows.map { ($0.windowID, $0) }, uniquingKeysWith: { first, _ in first })
         unshareableWindows.subtract(shareableWindows.keys)
         if let window = shareableWindows[id] { return window }
-        // Only a window that is still around and on screen was really left out on purpose.
-        if isKnown(id), WindowServer.facts(for: id)?.isOnScreen == true {
+        // Only a window that is still around was really left out on purpose.
+        if isKnown(id), WindowServer.facts(for: id) != nil {
             unshareableWindows.insert(id)
         }
         return nil
@@ -146,6 +166,7 @@ extension ThumbnailCache: WindowStoreObserver {
     }
 
     func windowStore(_ store: WindowStore, focusDidLeave window: WindowInfo) {
+        logger.debug("focus left \(window.id)")
         capture(window.id)
     }
 }

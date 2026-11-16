@@ -16,6 +16,8 @@ public enum KeyCode {
     public static let keypadEnter: UInt16 = 76
     public static let leftArrow: UInt16 = 123
     public static let rightArrow: UInt16 = 124
+    public static let downArrow: UInt16 = 125
+    public static let upArrow: UInt16 = 126
 }
 
 public enum KeyInput: Equatable, Sendable {
@@ -28,6 +30,8 @@ public enum KeyInput: Equatable, Sendable {
 public enum SwitcherCommand: Equatable, Sendable {
     case next
     case previous
+    case up
+    case down
     case cancel
     case commit
 }
@@ -65,6 +69,8 @@ public enum SwitcherKeyBindings {
         Chord(keyCode: KeyCode.tab, shift: true): .previous,
         Chord(keyCode: KeyCode.rightArrow, shift: false): .next,
         Chord(keyCode: KeyCode.leftArrow, shift: false): .previous,
+        Chord(keyCode: KeyCode.upArrow, shift: false): .up,
+        Chord(keyCode: KeyCode.downArrow, shift: false): .down,
         Chord(keyCode: KeyCode.escape, shift: false): .cancel,
         Chord(keyCode: KeyCode.returnKey, shift: false): .commit,
         Chord(keyCode: KeyCode.keypadEnter, shift: false): .commit,

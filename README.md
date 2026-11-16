@@ -14,6 +14,7 @@ A small, fast replacement for the macOS Cmd+Tab switcher that switches between *
 | Cmd+Tab (tap) | Back to the previous window |
 | Cmd+Tab (hold) | Show the switcher |
 | Tab / Shift+Tab, → / ← | Next / previous |
+| ↓ / ↑ | Next / previous row |
 | Release Cmd, Return | Switch to the selected window |
 | Esc | Cancel |
 | Mouse | Hover to select, click to switch |

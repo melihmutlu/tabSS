@@ -14,10 +14,13 @@ public final class SwitcherController<Entry> {
     public struct Snapshot {
         public let entries: [Entry]
         public let firstItemIsFocused: Bool
+        /// Tiles per row on screen, so Up and Down move between rows.
+        public let columns: Int?
 
-        public init(entries: [Entry], firstItemIsFocused: Bool) {
+        public init(entries: [Entry], firstItemIsFocused: Bool, columns: Int? = nil) {
             self.entries = entries
             self.firstItemIsFocused = firstItemIsFocused
+            self.columns = columns
         }
     }
 
@@ -71,7 +74,7 @@ public final class SwitcherController<Entry> {
             keyboardSession = session
             let snapshot = dependencies.snapshot()
             entries = snapshot.entries
-            send(.open(reverse: reverse, itemCount: entries.count, firstItemIsFocused: snapshot.firstItemIsFocused))
+            send(.open(reverse: reverse, itemCount: entries.count, firstItemIsFocused: snapshot.firstItemIsFocused, columns: snapshot.columns))
         case let .command(command):
             guard session == keyboardSession else { return }
             send(.command(command))

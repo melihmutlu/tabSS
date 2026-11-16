@@ -278,4 +278,25 @@ struct SwitcherControllerTests {
         env.fireScheduled()
         #expect(env.calls == [.show(["A", "B", "C"], 1), .hide])
     }
+
+    @Test func snapshotColumnsDriveUpAndDown() {
+        // 2 columns, 5 items:  A B / C D / E
+        var activated: [String] = []
+        let controller = SwitcherController<String>(dependencies: .init(
+            snapshot: { .init(entries: ["A", "B", "C", "D", "E"], firstItemIsFocused: true, columns: 2) },
+            show: { _, _ in },
+            select: { _ in },
+            hide: {},
+            activate: { activated.append($0) },
+            sessionEnded: { _ in },
+            commandKeyState: { _ in .held },
+            schedule: { _, _ in }
+        ))
+        controller.handle(.open(reverse: false), session: 1)  // B
+        controller.handle(.command(.down), session: 1)        // D
+        controller.handle(.command(.down), session: 1)        // wraps to B
+        controller.handle(.command(.up), session: 1)          // column 1's last row is short, so E
+        controller.handle(.command(.commit), session: 1)
+        #expect(activated == ["E"])
+    }
 }

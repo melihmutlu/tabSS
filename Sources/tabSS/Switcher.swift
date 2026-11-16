@@ -75,7 +75,8 @@ final class Switcher {
         let entries = store.orderedItems().prefix(screen.map(panel.capacity) ?? 0).compactMap(entry)
         var firstItemIsFocused = false
         if case let .window(first)? = entries.first { firstItemIsFocused = first.id == focused }
-        return .init(entries: entries, firstItemIsFocused: firstItemIsFocused)
+        let columns = screen.map { panel.columns(forItemCount: entries.count, on: $0) }
+        return .init(entries: entries, firstItemIsFocused: firstItemIsFocused, columns: columns)
     }
 
     private func entry(for item: SwitcherItem<CGWindowID, pid_t>) -> SwitcherEntry? {

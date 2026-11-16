@@ -159,4 +159,10 @@ struct KeyRouterTests {
         #expect(router.route(.keyDown(keyCode: KeyCode.tab, modifiers: [], isRepeat: true), isSwitching: false) == .consume())
         #expect(router.route(.keyUp(keyCode: KeyCode.tab), isSwitching: false) == .consume())
     }
+
+    @Test mutating func upAndDownArrowsMoveBetweenRowsWhileSwitching() {
+        #expect(router.route(.keyDown(keyCode: KeyCode.upArrow, modifiers: .command), isSwitching: true) == .consume(.up))
+        #expect(router.route(.keyDown(keyCode: KeyCode.downArrow, modifiers: .command), isSwitching: true) == .consume(.down))
+        #expect(router.route(.keyDown(keyCode: KeyCode.downArrow, modifiers: []), isSwitching: false) == .passThrough)
+    }
 }

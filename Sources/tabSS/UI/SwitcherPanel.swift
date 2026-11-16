@@ -16,9 +16,13 @@ final class SwitcherPanel {
     var onClick: ((Int) -> Void)?
 
     private static let cornerRadius: CGFloat = 20
-    private static let screenFraction: CGFloat = 0.9
+    private static let backgroundOpacity: CGFloat = 0.85
+    // Narrower than tall: long rows are hard to scan, so tiles wrap into more rows instead.
+    private static let maxWidthFraction: CGFloat = 0.6
+    private static let maxHeightFraction: CGFloat = 0.9
 
     private let panel: NSPanel
+    private let background = NSVisualEffectView()
     private let gridView = SwitcherGridView()
     private let metrics = TileLayout.Metrics()
 
@@ -36,13 +40,17 @@ final class SwitcherPanel {
         panel.sharingType = .none
 
         // The system material matches the native switcher and adapts to light/dark, Reduce Transparency and Increase Contrast.
-        let background = NSVisualEffectView()
         background.material = .hudWindow
         background.blendingMode = .behindWindow
         background.state = .active
         background.maskImage = Self.roundedMask(radius: Self.cornerRadius)
-        background.addSubview(gridView)
-        panel.contentView = background
+        // Only the material is faded, so tiles and text stay fully opaque.
+        background.alphaValue = Self.backgroundOpacity
+
+        let content = NSView()
+        content.addSubview(background)
+        content.addSubview(gridView)
+        panel.contentView = content
 
         gridView.onHover = { [weak self] in self?.onHover?($0) }
         gridView.onClick = { [weak self] in self?.onClick?($0) }
@@ -53,6 +61,10 @@ final class SwitcherPanel {
         TileLayout.capacity(maxPanelSize: maxPanelSize(on: screen), metrics: metrics)
     }
 
+    func columns(forItemCount count: Int, on screen: NSScreen) -> Int {
+        TileLayout(itemCount: count, maxPanelSize: maxPanelSize(on: screen), metrics: metrics).columns
+    }
+
     func show(_ tiles: [TileContent], selectedIndex: Int, on screen: NSScreen) {
         let layout = TileLayout(itemCount: tiles.count, maxPanelSize: maxPanelSize(on: screen), metrics: metrics)
         gridView.update(tiles: tiles, layout: layout, metrics: metrics, selectedIndex: selectedIndex)
@@ -60,6 +72,7 @@ final class SwitcherPanel {
         let visible = screen.visibleFrame
         let origin = CGPoint(x: (visible.midX - size.width / 2).rounded(), y: (visible.midY - size.height / 2).rounded())
         panel.setFrame(CGRect(origin: origin, size: size), display: false)
+        background.frame = CGRect(origin: .zero, size: size)
         gridView.frame = CGRect(origin: .zero, size: size)
         panel.orderFrontRegardless()
     }
@@ -74,7 +87,7 @@ final class SwitcherPanel {
     }
 
     private func maxPanelSize(on screen: NSScreen) -> CGSize {
-        CGSize(width: screen.visibleFrame.width * Self.screenFraction, height: screen.visibleFrame.height * Self.screenFraction)
+        CGSize(width: screen.visibleFrame.width * Self.maxWidthFraction, height: screen.visibleFrame.height * Self.maxHeightFraction)
     }
 
     private static func roundedMask(radius: CGFloat) -> NSImage {

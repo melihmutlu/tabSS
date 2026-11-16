@@ -64,3 +64,45 @@ struct SelectionTests {
         #expect(!Selection(count: 0, index: 0).contains(0))
     }
 }
+
+struct SelectionRowTests {
+    // 3 columns, 7 items:  0 1 2 / 3 4 5 / 6
+    @Test func downMovesARowAndWrapsToTheTopOfTheColumn() {
+        var selection = Selection(count: 7, index: 1, columns: 3)
+        selection.down()
+        #expect(selection.index == 4)
+        selection.down()
+        #expect(selection.index == 1)
+        selection.select(0)
+        selection.down()
+        selection.down()
+        #expect(selection.index == 6)
+        selection.down()
+        #expect(selection.index == 0)
+    }
+
+    @Test func upMovesARowAndWrapsToTheBottomOrLastItem() {
+        var selection = Selection(count: 7, index: 4, columns: 3)
+        selection.up()
+        #expect(selection.index == 1)
+        selection.up()
+        #expect(selection.index == 6)  // column 1 has no item in the short last row
+        selection.select(0)
+        selection.up()
+        #expect(selection.index == 6)
+    }
+
+    @Test func upAndDownDoNothingInASingleRow() {
+        var selection = Selection(count: 4, index: 2)
+        selection.up()
+        selection.down()
+        #expect(selection.index == 2)
+    }
+
+    @Test func emptySelectionIgnoresRows() {
+        var selection = Selection(count: 0, index: 0, columns: 3)
+        selection.up()
+        selection.down()
+        #expect(selection.index == 0)
+    }
+}
