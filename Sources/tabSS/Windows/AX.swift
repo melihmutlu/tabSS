@@ -19,11 +19,11 @@ enum AX {
         copyValue(element, attribute).flatMap(asElement)
     }
 
-    /// Tells "the app didn't answer in time" (`answered` false) apart from "it has none".
+    /// Tells "the app has none" (`answered`) apart from a timeout or error, where nothing is known.
     static func elementReply(_ element: AXUIElement, _ attribute: String) -> (answered: Bool, element: AXUIElement?) {
         var value: CFTypeRef?
         let result = AXUIElementCopyAttributeValue(element, attribute as CFString, &value)
-        return (result != .cannotComplete, result == .success ? value.flatMap(asElement) : nil)
+        return (result == .success || result == .noValue, result == .success ? value.flatMap(asElement) : nil)
     }
 
     /// Nil when the app didn't answer in time (hung or busy). Entries are type-checked, since the array comes

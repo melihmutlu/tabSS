@@ -294,9 +294,9 @@ struct SwitcherControllerTests {
         ))
         controller.handle(.open(reverse: false), session: 1)  // B
         controller.handle(.command(.down), session: 1)        // D
-        controller.handle(.command(.down), session: 1)        // wraps to B
-        controller.handle(.command(.up), session: 1)          // column 1's last row is short, so E
+        controller.handle(.command(.down), session: 1)        // nothing below D: the last tile, E
+        controller.handle(.command(.up), session: 1)          // C
         controller.handle(.command(.commit), session: 1)
-        #expect(activated == ["E"])
+        #expect(activated == ["C"])
     }
 }

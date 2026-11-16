@@ -27,23 +27,35 @@ public struct Selection: Equatable, Sendable {
         index = (index - 1 + count) % count
     }
 
-    /// One row down; from the last row it wraps to the top of the same column.
+    /// The tile directly below; in a short last row, the last tile; from the bottom row, the top of the column.
+    /// With a single row it moves to the next tile, like the arrow keys in the native switcher.
     public mutating func down() {
         guard !isEmpty else { return }
+        guard rows > 1 else { return next() }
         let below = index + columns
-        index = below < count ? below : index % columns
+        if below < count {
+            index = below
+        } else if index / columns < rows - 1 {
+            index = count - 1
+        } else {
+            index %= columns
+        }
     }
 
-    /// One row up; from the first row it wraps to the bottom of the same column, or the last item if that row is short.
+    /// The tile directly above; from the top row, the lowest tile in the same column.
+    /// With a single row it moves to the previous tile.
     public mutating func up() {
         guard !isEmpty else { return }
+        guard rows > 1 else { return previous() }
         guard index < columns else {
             index -= columns
             return
         }
-        let lastRowStart = (count - 1) / columns * columns
-        index = min(lastRowStart + index, count - 1)
+        let bottom = (rows - 1) * columns + index
+        index = bottom < count ? bottom : bottom - columns
     }
+
+    private var rows: Int { (count + columns - 1) / columns }
 
     public mutating func select(_ newIndex: Int) {
         index = Self.clamp(newIndex, count: count)
