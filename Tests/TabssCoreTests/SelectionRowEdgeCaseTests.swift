@@ -14,14 +14,15 @@ struct GridPositionTests {
 
     @Test func nearestStopsPastTheEdges() {
         let grid = GridPosition(count: 7, columns: 3)
-        #expect(grid.nearest(to: 1, rowDelta: -1) == nil)
-        #expect(grid.nearest(to: 6, rowDelta: 1) == nil)
+        #expect(grid.nearest(to: 1, inRow: -1) == nil)
+        #expect(grid.nearest(to: 1, inRow: 3) == nil)
+        #expect(grid.indices(inRow: 5).isEmpty)
     }
 
     // 4 columns, 7 items:  0 1 2 3 / ½ 4 5 6 ½  — tile 1 sits exactly between 4 and 5.
     @Test func tiesGoToTheLeftTile() {
-        #expect(GridPosition(count: 7, columns: 4).nearest(to: 1, rowDelta: 1) == 4)
-        #expect(GridPosition(count: 7, columns: 4).nearest(to: 2, rowDelta: 1) == 5)
+        #expect(GridPosition(count: 7, columns: 4).nearest(to: 1, inRow: 1) == 4)
+        #expect(GridPosition(count: 7, columns: 4).nearest(to: 2, inRow: 1) == 5)
     }
 
     @Test func nonPositiveColumnsBehaveAsOneColumn() {
@@ -40,7 +41,7 @@ struct GridPositionTests {
         let grid = GridPosition(count: count, columns: columns)
         for start in 0..<count {
             for delta in [-1, 1] {
-                guard let target = grid.nearest(to: start, rowDelta: delta) else { continue }
+                guard let target = grid.nearest(to: grid.horizontalPosition(of: start), inRow: grid.row(of: start) + delta) else { continue }
                 let distance = abs(layout.tileFrames[target].midX - layout.tileFrames[start].midX)
                 let best = grid.indices(inRow: grid.row(of: target))
                     .map { abs(layout.tileFrames[$0].midX - layout.tileFrames[start].midX) }
@@ -87,5 +88,41 @@ struct SwitcherStateMachineRowTests {
         #expect(machine.handle(.command(.up)) == [])
         #expect(machine.handle(.command(.down)) == [])
         #expect(!machine.isActive)
+    }
+}
+
+struct ColumnMemoryTests {
+    // 2 columns, 3 items:  0 1 / ½ 2 ½  — without column memory, 1 ↓ 2 ↑ would land on 0.
+    @Test func downThenUpReturnsToTheStartingTile() {
+        for start in 0..<2 {
+            var selection = Selection(count: 3, index: start, columns: 2)
+            selection.down()
+            #expect(selection.index == 2)
+            selection.up()
+            #expect(selection.index == start)
+        }
+    }
+
+    @Test func repeatedUpAndDownNeverDrift() {
+        var selection = Selection(count: 71, index: 68, columns: 12)
+        for _ in 0..<10 {
+            selection.up()
+            selection.down()
+        }
+        #expect(selection.index == 68)
+    }
+
+    @Test func sidewaysMovesResetTheMemory() {
+        var selection = Selection(count: 3, index: 1, columns: 2)
+        selection.down()   // 2
+        selection.previous()  // 1
+        selection.previous()  // 0
+        selection.next()   // 1
+        selection.up()     // top edge: stays
+        #expect(selection.index == 1)
+        selection.select(0)
+        selection.down()   // 2
+        selection.up()     // back to 0, not 1
+        #expect(selection.index == 0)
     }
 }

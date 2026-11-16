@@ -30,6 +30,7 @@ final class ThumbnailCache {
     // Never offered for capture (e.g. windows that opt out of screen sharing).
     private var unshareableWindows: Set<CGWindowID> = []
     private var queue: [CGWindowID] = []
+    private var pendingRetries: Set<CGWindowID> = []
     private var isCapturing = false
 
     /// Observes `store` from now on; create it before the store starts so every window is seen.
@@ -114,7 +115,7 @@ final class ThumbnailCache {
             logger.debug("skip \(id): not in shareable content")
             return nil
         case .tryLater:
-            // Startup adds many windows at once; the throttled ones are captured right after the next fetch.
+            // Startup adds many windows at once; throttled ones are retried once the fetch interval has passed.
             retryLater(id)
             return nil
         }
@@ -163,9 +164,12 @@ final class ThumbnailCache {
     }
 
     private func retryLater(_ id: CGWindowID) {
+        guard pendingRetries.insert(id).inserted else { return }
         Task { [weak self] in
             try? await Task.sleep(for: Self.minimumFetchInterval)
-            self?.capture(id)
+            guard let self else { return }
+            pendingRetries.remove(id)
+            capture(id)
         }
     }
 }

@@ -13,7 +13,9 @@ public struct GridPosition: Equatable, Sendable {
 
     public func row(of index: Int) -> Int { index / columns }
 
+    /// Empty for rows outside the grid.
     public func indices(inRow row: Int) -> Range<Int> {
+        guard (0..<rows).contains(row) else { return 0..<0 }
         let start = row * columns
         return start..<min(start + columns, count)
     }
@@ -24,12 +26,9 @@ public struct GridPosition: Equatable, Sendable {
         return Double(index % columns) + Double(missing) / 2
     }
 
-    /// The item in the row `rowDelta` away that is drawn closest to `index` horizontally, or nil past the edge.
-    public func nearest(to index: Int, rowDelta: Int) -> Int? {
-        let target = row(of: index) + rowDelta
-        guard (0..<rows).contains(target) else { return nil }
-        let position = horizontalPosition(of: index)
-        // On a tie (exactly between two tiles), the left one wins.
-        return indices(inRow: target).min { abs(horizontalPosition(of: $0) - position) < abs(horizontalPosition(of: $1) - position) }
+    /// The item in `row` drawn closest to `position` (in column widths), or nil for rows outside the grid.
+    /// On a tie (exactly between two tiles), the left one wins.
+    public func nearest(to position: Double, inRow row: Int) -> Int? {
+        indices(inRow: row).min { abs(horizontalPosition(of: $0) - position) < abs(horizontalPosition(of: $1) - position) }
     }
 }

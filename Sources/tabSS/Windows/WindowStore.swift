@@ -94,7 +94,15 @@ final class WindowStore {
     }
 
     func orderedItems() -> [SwitcherItem<CGWindowID, pid_t>] {
-        registry.items(runningApps: apps.keys.sorted())
+        // A quit notification can be missed; a process that no longer exists must never be offered.
+        for pid in apps.keys where !Self.processExists(pid) {
+            detach(pid)
+        }
+        return registry.items(runningApps: apps.keys.sorted())
+    }
+
+    private static func processExists(_ pid: pid_t) -> Bool {
+        kill(pid, 0) == 0 || errno == EPERM
     }
 
     /// Keeps `apps` current; an app's activation policy can change after launch, so this runs on activation too.
@@ -419,7 +427,11 @@ final class WindowStore {
             store.attachAndRefresh(app)
         }
         observe(NSWorkspace.didTerminateApplicationNotification) { store, app in
-            if let app { store.detach(app.processIdentifier) }
+            // Matched by identity: once the process is gone, asking it for its pid may no longer give the old one.
+            guard let app, let pid = store.apps.first(where: { $0.value == app })?.key
+                ?? store.watchers.first(where: { $0.value.app == app })?.key
+            else { return }
+            store.detach(pid)
         }
         observe(NSWorkspace.didActivateApplicationNotification) { store, app in
             if let app { store.appDidActivate(app) }

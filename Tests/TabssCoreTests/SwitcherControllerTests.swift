@@ -296,8 +296,8 @@ struct SwitcherControllerTests {
         controller.handle(.command(.down), session: 1)        // D
         controller.handle(.command(.down), session: 1)        // E, centered below C and D
         controller.handle(.command(.down), session: 1)        // bottom edge: stays on E
-        controller.handle(.command(.up), session: 1)          // C (tie between C and D goes left)
+        controller.handle(.command(.up), session: 1)          // D: the column this run of moves started in
         controller.handle(.command(.commit), session: 1)
-        #expect(activated == ["C"])
+        #expect(activated == ["D"])
     }
 }
