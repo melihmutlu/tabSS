@@ -55,4 +55,4 @@ Other targets: `make test` (unit tests), `make smoke` (checks the installed app 
 
 ## Disclaimer
 
-<sub><sup>This code has been vibecoded and not reviewed by any human. Use at your own risk.</sup></sub>
+This code has been vibecoded and not reviewed by any human. Use at your own risk.
