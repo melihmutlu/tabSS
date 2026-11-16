@@ -70,3 +70,22 @@ struct DisplayTextEdgeCaseTests {
         #expect(DisplayText.title("a\u{061C}b", fallback: "x") == "ab")
     }
 }
+
+struct DisplayTextIgnorableTests {
+    // Default-ignorable code points that aren't format characters (Hangul fillers, combining grapheme joiner)
+    // are invisible too and must not survive between visible letters.
+    @Test func removesDefaultIgnorableNonFormatCharacters() {
+        #expect(DisplayText.title("Pay\u{3164}Pal", fallback: "x") == "PayPal")
+        #expect(DisplayText.title("a\u{034F}b\u{115F}c\u{FFA0}d", fallback: "x") == "abcd")
+    }
+
+    @Test func keepsIdeographicVariationSelectors() {
+        let withSelector = "\u{845B}\u{E0100}"  // 葛 with an ideographic variation selector
+        #expect(DisplayText.title(withSelector, fallback: "x") == withSelector)
+    }
+
+    // Only the tag range that builds subdivision flags is kept; the deprecated language tag is dropped.
+    @Test func dropsLanguageTagButKeepsFlagTags() {
+        #expect(DisplayText.title("a\u{E0001}b", fallback: "x") == "ab")
+    }
+}

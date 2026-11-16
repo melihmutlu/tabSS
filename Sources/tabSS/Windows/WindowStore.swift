@@ -7,7 +7,6 @@ struct WindowInfo {
     let app: NSRunningApplication
     let element: AXUIElement
     var title: String
-    var isMinimized: Bool
 }
 
 @MainActor
@@ -27,8 +26,10 @@ final class WindowStore {
 
     private var registry = WindowRegistry<CGWindowID, pid_t>()
     private var watchers: [pid_t: AppWatcher] = [:]
-    // Skipped by bulk refreshes until they show signs of life (an event or an activation).
-    private var unresponsiveApps: Set<pid_t> = []
+    // Apps that answered too slowly, and since when. tabSS stops calling into them for a cooldown,
+    // or until the user activates them again.
+    private var unresponsiveSince: [pid_t: ContinuousClock.Instant] = [:]
+    private var mainThreadTime: [pid_t: UsageBudget] = [:]
     private var appsAwaitingAttachRetry: Set<pid_t> = []
     // Apps whose windows on other Spaces haven't been fully scanned yet, and scans in flight.
     private var appsNeedingDiscovery: Set<pid_t> = []
@@ -44,20 +45,44 @@ final class WindowStore {
     private static let newWindowRecheckDelays: [Duration] = [.milliseconds(500), .seconds(2)]
     // Bounds the work an app spamming window-created notifications can cause.
     private static let maxPendingRechecks = 32
-    private static let refreshBudgetPerApp: Duration = .milliseconds(500)
+    // Main-thread time any one app may cost (events, refreshes, rechecks together) before it is cut off.
+    private static let mainThreadTimePerApp: Duration = .milliseconds(500)
+    private static let mainThreadTimeWindow: Duration = .seconds(1)
+    // Bounds what a hostile app can cost to the budget once per cooldown (~5% of the main thread).
+    private static let unresponsiveCooldown: Duration = .seconds(10)
 
     var focusedWindowID: CGWindowID? { registry.focusedWindow }
 
     func start() {
         AX.limitMessagingTimeout(to: Self.messagingTimeout)
         registry = WindowRegistry(zOrder: WindowServer.onScreenWindowIDsFrontToBack())
-        NSWorkspace.shared.runningApplications.forEach { attach($0) }
-        refreshWindows(of: Array(watchers.values))
-        watchers.values.forEach(discoverWindowsOnOtherSpaces)
+        observeWorkspace()
+        Task { await attachRunningApps() }
+    }
+
+    /// Records a switch tabSS made right away, so a quick second switch sees the new order
+    /// even before macOS reports the focus change.
+    func noteSwitch(to entry: SwitcherItem<CGWindowID, pid_t>) {
+        switch entry {
+        case let .window(id):
+            guard let window = windows[id] else { return }
+            reportFocusLeft(registry.activate(window.app.processIdentifier, focusedWindow: id))
+        case let .app(pid):
+            reportFocusLeft(registry.activate(pid, focusedWindow: nil))
+        }
+    }
+
+    /// One app per main-actor turn: at login many apps are busy, and Cmd+Tab must still get through in between.
+    private func attachRunningApps() async {
+        // The frontmost app first, so Cmd+Tab works for what the user is looking at right away.
         if let frontmost = NSWorkspace.shared.frontmostApplication {
+            attachAndRefresh(frontmost)
             syncActivation(of: frontmost)
         }
-        observeWorkspace()
+        for app in NSWorkspace.shared.runningApplications {
+            await Task.yield()
+            attachAndRefresh(app)
+        }
     }
 
     func orderedItems() -> [SwitcherItem<CGWindowID, pid_t>] {
@@ -82,7 +107,7 @@ final class WindowStore {
             return false
         }
         watchers[pid] = watcher
-        unresponsiveApps.remove(pid)
+        unresponsiveSince[pid] = nil
         appsNeedingDiscovery.insert(pid)
         return true
     }
@@ -113,7 +138,7 @@ final class WindowStore {
     /// Repeated (on activation or recovery) until one scan has completed.
     private func discoverWindowsOnOtherSpaces(of watcher: AppWatcher) {
         let pid = watcher.app.processIdentifier
-        guard appsNeedingDiscovery.contains(pid), !unresponsiveApps.contains(pid),
+        guard appsNeedingDiscovery.contains(pid), !isUnresponsive(pid),
               appsBeingDiscovered.insert(pid).inserted
         else { return }
         let known = Set(registry.windows(of: pid))
@@ -123,8 +148,8 @@ final class WindowStore {
             DispatchQueue.main.async {
                 guard let self else { return }
                 self.appsBeingDiscovered.remove(pid)
-                guard let watcher = self.watchers[pid], !self.unresponsiveApps.contains(pid) else { return }
-                let addedAll = self.addWithinBudget(result.windows.map { ($0.element, $0.id) }, of: watcher)
+                guard let watcher = self.watchers[pid], !self.isUnresponsive(pid) else { return }
+                let addedAll = self.addEach(result.windows.map { ($0.element, $0.id) }, of: watcher)
                 if result.isComplete && addedAll { self.appsNeedingDiscovery.remove(pid) }
             }
         }
@@ -132,7 +157,7 @@ final class WindowStore {
 
     private func detach(_ pid: pid_t) {
         watchers[pid] = nil
-        unresponsiveApps.remove(pid)
+        unresponsiveSince[pid] = nil
         appsNeedingDiscovery.remove(pid)
         registry.removeApp(pid).forEach(forget)
     }
@@ -142,44 +167,49 @@ final class WindowStore {
     private func refreshWindows(of targets: [AppWatcher]) {
         for watcher in targets {
             let pid = watcher.app.processIdentifier
-            guard let elements = AX.elements(watcher.element, kAXWindowsAttribute) else {
-                unresponsiveApps.insert(pid)
+            var listed: [AXUIElement]?
+            guard callingApp(pid, { listed = AX.elements(watcher.element, kAXWindowsAttribute) }) else { continue }
+            guard let elements = listed else {
+                markUnresponsive(pid)  // timed out
                 continue
             }
-            unresponsiveApps.remove(pid)
-            addWithinBudget(elements.map { ($0, nil) }, of: watcher)
+            addEach(elements.map { ($0, nil) }, of: watcher)
         }
         // Taken after listing, so windows created meanwhile aren't pruned; nil on a window server hiccup.
         guard let existing = WindowServer.allWindowIDs() else { return }
         for watcher in targets {
             let pid = watcher.app.processIdentifier
-            let gone = registry.windows(of: pid).filter { !existing.contains($0) }
-            gone.forEach(removeWindow)
-            // Telling ghosts apart asks the app about each window, so skip apps that aren't answering.
-            guard !unresponsiveApps.contains(pid) else { continue }
-            withinBudget(registry.windows(of: pid), for: pid, removeGhost)
-        }
-    }
-
-    /// Returns false if the app was too slow to add them all.
-    @discardableResult
-    private func addWithinBudget(_ candidates: [(element: AXUIElement, id: CGWindowID?)], of watcher: AppWatcher) -> Bool {
-        withinBudget(candidates, for: watcher.app.processIdentifier) { addWindow($0.element, of: watcher, id: $0.id) }
-    }
-
-    /// Each item costs calls into the app; a slow app gets cut off and treated as unresponsive.
-    /// Returns false if it was cut off.
-    @discardableResult
-    private func withinBudget<Item>(_ items: [Item], for pid: pid_t, _ work: (Item) -> Void) -> Bool {
-        let clock = ContinuousClock()
-        let deadline = clock.now + Self.refreshBudgetPerApp
-        for item in items {
-            guard clock.now < deadline else {
-                unresponsiveApps.insert(pid)
-                return false
+            for id in registry.windows(of: pid) {
+                if !existing.contains(id) {
+                    removeWindow(id)
+                } else if !callingApp(pid, { removeGhost(id) }) {
+                    break
+                }
             }
-            work(item)
         }
+    }
+
+    /// Returns false if the app was cut off before all were added.
+    @discardableResult
+    private func addEach(_ candidates: [(element: AXUIElement, id: CGWindowID?)], of watcher: AppWatcher) -> Bool {
+        candidates.allSatisfy { candidate in
+            callingApp(watcher.app.processIdentifier) { addWindow(candidate.element, of: watcher, id: candidate.id) }
+        }
+    }
+
+    /// Runs `work`, which calls into the app, unless the app is marked unresponsive; returns whether it ran.
+    /// The time it takes is charged to the app, so neither one slow call nor many quick ones can monopolize
+    /// the main thread (and with it the switcher).
+    @discardableResult
+    private func callingApp(_ pid: pid_t, _ work: () -> Void) -> Bool {
+        guard !isUnresponsive(pid) else { return false }
+        let clock = ContinuousClock()
+        let started = clock.now
+        work()
+        let now = clock.now
+        var budget = mainThreadTime[pid] ?? UsageBudget(limit: Self.mainThreadTimePerApp, per: Self.mainThreadTimeWindow)
+        if budget.charge(now - started, at: now) { markUnresponsive(pid) }
+        mainThreadTime[pid] = budget
         return true
     }
 
@@ -191,6 +221,19 @@ final class WindowStore {
         removeWindow(id)
     }
 
+    private func markUnresponsive(_ pid: pid_t) {
+        unresponsiveSince[pid] = .now
+    }
+
+    private func isUnresponsive(_ pid: pid_t) -> Bool {
+        guard let since = unresponsiveSince[pid] else { return false }
+        guard ContinuousClock.now - since < Self.unresponsiveCooldown else {
+            unresponsiveSince[pid] = nil
+            return false
+        }
+        return true
+    }
+
     /// Records `app` as the most recent and focuses its focused window. Non-regular apps, and apps
     /// Accessibility can't reach, leave no switchable window focused.
     private func syncActivation(of app: NSRunningApplication) {
@@ -199,12 +242,10 @@ final class WindowStore {
             reportFocusLeft(registry.focus(nil))
             return
         }
-        // Asking a hung app for its focused window would cost another timeout.
-        guard let watcher = watchers[pid], !unresponsiveApps.contains(pid) else {
-            reportFocusLeft(registry.activate(pid, focusedWindow: nil))
-            return
+        var focused: CGWindowID?
+        if let watcher = watchers[pid] {
+            callingApp(pid) { focused = AX.element(watcher.element, kAXFocusedWindowAttribute).flatMap { addWindow($0, of: watcher) } }
         }
-        let focused = AX.element(watcher.element, kAXFocusedWindowAttribute).flatMap { addWindow($0, of: watcher) }
         reportFocusLeft(registry.activate(pid, focusedWindow: focused))
     }
 
@@ -213,7 +254,7 @@ final class WindowStore {
     /// `id`, when already resolved (by discovery), saves a round trip into the app.
     @discardableResult
     private func addWindow(_ element: AXUIElement, of watcher: AppWatcher, id knownWindowID: CGWindowID? = nil) -> CGWindowID? {
-        if let known = knownID(of: element) { return known }
+        if let known = knownID(of: element, in: watcher.app.processIdentifier) { return known }
         let pid = watcher.app.processIdentifier
         guard let id = knownWindowID ?? PrivateAPI.windowID(of: element) else { return nil }
         // The ID comes from the app itself; it must not claim another app's window.
@@ -229,8 +270,7 @@ final class WindowStore {
             id: id,
             app: watcher.app,
             element: element,
-            title: title(of: element),
-            isMinimized: AX.bool(element, kAXMinimizedAttribute) ?? false
+            title: title(of: element)
         )
         windows[id] = window
         watcher.watch(window: element)
@@ -254,8 +294,8 @@ final class WindowStore {
     }
 
     /// Matching in memory first avoids a round trip into the app, and works for destroyed windows.
-    private func knownID(of element: AXUIElement) -> CGWindowID? {
-        windows.values.first { CFEqual($0.element, element) }?.id
+    private func knownID(of element: AXUIElement, in pid: pid_t) -> CGWindowID? {
+        registry.windows(of: pid).first { windows[$0].map { CFEqual($0.element, element) } ?? false }
     }
 
     private func title(of element: AXUIElement) -> String {
@@ -265,26 +305,32 @@ final class WindowStore {
 
     // MARK: - Events
 
+    /// Events from an unresponsive app are still handled from memory, just without calling back into it.
     private func handle(_ event: AppWatcher.Event, from watcher: AppWatcher) {
-        if unresponsiveApps.remove(watcher.app.processIdentifier) != nil {
-            discoverWindowsOnOtherSpaces(of: watcher)  // it may have been skipped while the app was busy
-        }
+        let pid = watcher.app.processIdentifier
         switch event {
         case let .windowCreated(element):
-            if addWindow(element, of: watcher) == nil {
+            var added: CGWindowID?
+            if callingApp(pid, { added = addWindow(element, of: watcher) }), added == nil {
                 recheckLater(element, of: watcher)
             }
         case let .focusedWindowChanged(element):
             guard watcher.app.isActive else { return }
-            let previous = registry.focus(addWindow(element, of: watcher))
+            var focused = knownID(of: element, in: pid)
+            if focused == nil {
+                callingApp(pid) { focused = addWindow(element, of: watcher) }
+            }
+            let previous = registry.focus(focused)
             reportFocusLeft(previous)
-            if let previous { removeGhost(previous) }  // switching tabs sends the previous tab to the background
+            if let previous {
+                callingApp(pid) { removeGhost(previous) }  // switching tabs sends the previous tab to the background
+            }
         case let .windowDestroyed(element):
-            if let id = knownID(of: element) { removeWindow(id) }
-        case let .windowMinimizedChanged(element, isMinimized):
-            if let id = knownID(of: element) { windows[id]?.isMinimized = isMinimized }
+            if let id = knownID(of: element, in: pid) { removeWindow(id) }
         case let .windowTitleChanged(element):
-            if let id = knownID(of: element) { windows[id]?.title = title(of: element) }
+            if let id = knownID(of: element, in: pid) {
+                callingApp(pid) { windows[id]?.title = title(of: element) }
+            }
         }
     }
 
@@ -298,7 +344,9 @@ final class WindowStore {
             guard let self else { return }
             pendingRechecks -= 1
             guard let watcher, watchers[watcher.app.processIdentifier] === watcher else { return }
-            guard addWindow(element, of: watcher) != nil else {
+            var added: CGWindowID?
+            guard callingApp(watcher.app.processIdentifier, { added = addWindow(element, of: watcher) }) else { return }
+            guard added != nil else {
                 recheckLater(element, of: watcher, attempt: attempt + 1)
                 return
             }
@@ -308,6 +356,8 @@ final class WindowStore {
     }
 
     private func appDidActivate(_ app: NSRunningApplication) {
+        // The user chose this app, so it gets another chance even if it was slow before.
+        unresponsiveSince[app.processIdentifier] = nil
         // Attaching late covers apps that weren't ready at launch or became regular apps afterwards.
         if !attachAndRefresh(app), let watcher = watchers[app.processIdentifier] {
             refreshWindows(of: [watcher])
@@ -318,8 +368,7 @@ final class WindowStore {
 
     private func activeSpaceDidChange() {
         // Accessibility lists only the current Space's windows, so pick up any we haven't seen yet.
-        // Unresponsive apps would cost a timeout each; they catch up when they next activate or send an event.
-        refreshWindows(of: watchers.values.filter { !unresponsiveApps.contains($0.app.processIdentifier) })
+        refreshWindows(of: Array(watchers.values))
     }
 
     private func observeWorkspace() {

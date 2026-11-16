@@ -68,3 +68,20 @@ struct GeometryTests {
         #expect(abs(fitted.height - size.height * scale) <= 0.5 || fitted.height == 1)
     }
 }
+
+struct FractionalBoundsGeometryTests {
+    /// Bounds come from view sizes in points and can be fractional on either axis; rounding must never
+    /// push the integral capture size past them.
+    @Test(arguments: [
+        CGSize(width: 99.6, height: 200), CGSize(width: 200, height: 99.6), CGSize(width: 439.5, height: 279.5),
+        CGSize(width: 1.9, height: 1.9), CGSize(width: 333.7, height: 0.99e3),
+    ])
+    func staysWithinFractionalBounds(bounds: CGSize) {
+        for size in [CGSize(width: 3, height: 2), CGSize(width: 2, height: 3), CGSize(width: 1920, height: 1080), CGSize(width: 1, height: 1)] {
+            let fitted = size.aspectFitted(in: bounds)
+            #expect(fitted.width <= bounds.width && fitted.height <= bounds.height, "\(size) in \(bounds)")
+            #expect(fitted.width >= 1 && fitted.height >= 1)
+            #expect(fitted.width == fitted.width.rounded() && fitted.height == fitted.height.rounded())
+        }
+    }
+}

@@ -102,7 +102,6 @@ private final class SwitcherGridView: NSView {
 
     private var tiles: [WindowTileView] = []
     private var layout: TileLayout?
-    private var selectedIndex: Int?
 
     override var isFlipped: Bool { true }
 
@@ -139,7 +138,6 @@ private final class SwitcherGridView: NSView {
         for (tileIndex, tile) in tiles.enumerated() {
             tile.isSelected = tileIndex == index
         }
-        selectedIndex = index
         // The panel never takes focus, so VoiceOver hears about the selection through an announcement.
         if index < tiles.count, let label = tiles[index].accessibilityLabel() {
             NSAccessibility.post(element: self, notification: .announcementRequested, userInfo: [.announcement: label, .priority: NSAccessibilityPriorityLevel.high.rawValue])
@@ -154,7 +152,6 @@ private final class SwitcherGridView: NSView {
             tile.isHidden = true
         }
         layout = nil
-        selectedIndex = nil
     }
 
     override func updateTrackingAreas() {

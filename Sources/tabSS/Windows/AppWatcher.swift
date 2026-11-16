@@ -8,15 +8,12 @@ final class AppWatcher {
         case windowCreated(AXUIElement)
         case focusedWindowChanged(AXUIElement)
         case windowDestroyed(AXUIElement)
-        case windowMinimizedChanged(AXUIElement, isMinimized: Bool)
         case windowTitleChanged(AXUIElement)
     }
 
     private static let appNotifications = [kAXWindowCreatedNotification, kAXFocusedWindowChangedNotification]
     private static let windowNotifications = [
         kAXUIElementDestroyedNotification,
-        kAXWindowMiniaturizedNotification,
-        kAXWindowDeminiaturizedNotification,
         kAXTitleChangedNotification,
     ]
 
@@ -65,8 +62,6 @@ final class AppWatcher {
         case kAXWindowCreatedNotification: .windowCreated(element)
         case kAXFocusedWindowChangedNotification: .focusedWindowChanged(element)
         case kAXUIElementDestroyedNotification: .windowDestroyed(element)
-        case kAXWindowMiniaturizedNotification: .windowMinimizedChanged(element, isMinimized: true)
-        case kAXWindowDeminiaturizedNotification: .windowMinimizedChanged(element, isMinimized: false)
         case kAXTitleChangedNotification: .windowTitleChanged(element)
         default: nil
         }

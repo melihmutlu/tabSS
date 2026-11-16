@@ -9,8 +9,6 @@ private func openPrivacySettings(_ anchor: String) {
 /// Accessibility is required for the event tap and for reading/focusing windows.
 @MainActor
 final class AccessibilityPermission {
-    private var waitTask: Task<Void, Never>?
-
     var isGranted: Bool { AXIsProcessTrusted() }
 
     /// Shows the system prompt if needed, then calls `onGranted` once access is granted, without a relaunch.
@@ -22,10 +20,9 @@ final class AccessibilityPermission {
             return
         }
         // There is no public notification for the grant, so check once per second until it happens.
-        waitTask = Task { @MainActor in
+        Task { @MainActor in
             while !AXIsProcessTrusted() {
                 try? await Task.sleep(for: .seconds(1), tolerance: .milliseconds(500))
-                if Task.isCancelled { return }
             }
             onGranted()
         }

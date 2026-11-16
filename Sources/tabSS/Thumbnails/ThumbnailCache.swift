@@ -2,8 +2,8 @@ import CoreGraphics
 import ScreenCaptureKit
 import TabssCore
 
-/// Window thumbnails, kept in memory only. Captures happen when a window first appears or loses focus,
-/// never while idle and never when the switcher opens, so opening it costs nothing.
+/// Window thumbnails, kept in memory only. Captures happen when a window first appears or is about to lose
+/// focus (including when Cmd+Tab starts, since a switch to another Space would take it off screen), never while idle.
 @MainActor
 final class ThumbnailCache {
     // Twice the tile's thumbnail box, so thumbnails stay sharp on Retina displays.
@@ -40,6 +40,17 @@ final class ThumbnailCache {
         images[id]
     }
 
+    /// Revoking Screen Recording should also take away what was captured before.
+    func discardIfPermissionRevoked() {
+        guard isPermitted, !ScreenRecordingPermission.isGranted else { return }
+        isPermitted = false
+        lastPermissionCheck = .now
+        images.removeAll()
+        lastCaptures.removeAll()
+        shareableWindows.removeAll()
+        queue.removeAll()
+    }
+
     /// For a window about to lose focus while it is still on screen, e.g. right before switching away from it.
     func capture(_ id: CGWindowID) {
         guard hasPermission(), isKnown(id), !queue.contains(id), !unshareableWindows.contains(id) else { return }
@@ -73,6 +84,7 @@ final class ThumbnailCache {
     }
 
     private func keep(_ image: CGImage, for id: CGWindowID) {
+        guard isPermitted else { return }  // revoked while this capture was in flight
         images[id] = image
         lastCaptures[id] = .now
         guard images.count > Self.maxImages,

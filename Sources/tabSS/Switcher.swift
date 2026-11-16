@@ -44,15 +44,14 @@ final class Switcher {
 
     /// Fails when the keyboard hook can't be installed (Accessibility not granted).
     func start() -> Bool {
-        store.start()
-        panel.onHover = { [weak self] in self?.controller.pointerHovered(at: $0) }
-        panel.onClick = { [weak self] in self?.controller.pointerClicked(at: $0) }
-
         let monitor = HotkeyMonitor { [weak self] action, session, issuedAt in
             self?.handle(action, session: session, issuedAt: issuedAt)
         }
         guard monitor.start() else { return false }
         self.monitor = monitor
+        panel.onHover = { [weak self] in self?.controller.pointerHovered(at: $0) }
+        panel.onClick = { [weak self] in self?.controller.pointerClicked(at: $0) }
+        store.start()
         return true
     }
 
@@ -73,20 +72,23 @@ final class Switcher {
         if let focused {
             thumbnails.capture(focused)  // it is about to lose focus and is still on screen
         }
-        let entries = store.orderedItems().prefix(screen.map(panel.capacity) ?? 0).compactMap(entry)
+        // Shared instances keep each app's icon cached between sessions.
+        let runningApps = Dictionary(NSWorkspace.shared.runningApplications.map { ($0.processIdentifier, $0) }, uniquingKeysWith: { first, _ in first })
+        let entries = store.orderedItems().prefix(screen.map(panel.capacity) ?? 0).compactMap { entry(for: $0, runningApps: runningApps) }
         var firstItemIsFocused = false
         if case let .window(first)? = entries.first { firstItemIsFocused = first.id == focused }
         return .init(entries: entries, firstItemIsFocused: firstItemIsFocused)
     }
 
-    private func entry(for item: SwitcherItem<CGWindowID, pid_t>) -> SwitcherEntry? {
+    private func entry(for item: SwitcherItem<CGWindowID, pid_t>, runningApps: [pid_t: NSRunningApplication]) -> SwitcherEntry? {
         switch item {
         case let .window(id): store.windows[id].map(SwitcherEntry.window)
-        case let .app(pid): NSRunningApplication(processIdentifier: pid).map(SwitcherEntry.app)
+        case let .app(pid): runningApps[pid].map(SwitcherEntry.app)
         }
     }
 
     private func show(_ entries: [SwitcherEntry], selectedIndex: Int) {
+        thumbnails.discardIfPermissionRevoked()
         let tiles = entries.map { entry -> TileContent in
             let appName = DisplayText.title(entry.app.localizedName ?? "", fallback: "")
             switch entry {
@@ -103,8 +105,12 @@ final class Switcher {
 
     private func activate(_ entry: SwitcherEntry) {
         switch entry {
-        case let .window(window): activator.activate(window)
-        case let .app(app): activator.activate(app)
+        case let .window(window):
+            store.noteSwitch(to: .window(window.id))
+            activator.activate(window)
+        case let .app(app):
+            store.noteSwitch(to: .app(app.processIdentifier))
+            activator.activate(app)
         }
     }
 

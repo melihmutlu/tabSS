@@ -11,11 +11,20 @@ public enum DisplayText {
         return title.isEmpty ? fallback : title
     }
 
-    private static let zeroWidthJoiners: Set<UInt32> = [0x200C, 0x200D]  // needed by emoji sequences and some scripts
-
     private static func isInvisible(_ scalar: Unicode.Scalar) -> Bool {
-        scalar.properties.isBidiControl
-            || (scalar.properties.generalCategory == .format && !zeroWidthJoiners.contains(scalar.value))
+        let properties = scalar.properties
+        let ignorable = properties.isDefaultIgnorableCodePoint || properties.generalCategory == .format
+        return properties.isBidiControl || (ignorable && !shapesVisibleText(scalar))
+    }
+
+    /// Invisible on their own, but needed by emoji, flags and some scripts to render correctly.
+    private static func shapesVisibleText(_ scalar: Unicode.Scalar) -> Bool {
+        switch scalar.value {
+        case 0x200C, 0x200D: true  // zero-width non-joiner and joiner
+        case 0xFE00...0xFE0F, 0xE0100...0xE01EF: true  // variation selectors
+        case 0xE0020...0xE007F: true  // tag characters (subdivision flags)
+        default: false
+        }
     }
 
     private static func isLineBreakOrControl(_ scalar: Unicode.Scalar) -> Bool {

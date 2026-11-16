@@ -9,7 +9,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var switcher: Switcher?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        statusMenu = StatusMenu(accessibility: accessibility)
+        statusMenu = StatusMenu(accessibility: accessibility, isSwitcherRunning: { [weak self] in self?.switcher != nil })
         LaunchAtLogin.enableOnFirstRun()
         accessibility.whenGranted { [weak self] in
             self?.startSwitcher()
