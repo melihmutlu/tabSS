@@ -46,7 +46,11 @@ Other targets: `make test` (unit tests), `make smoke` (checks the installed app 
 
 ## Future work
 
-- Cmd+Q while the switcher is open to quit the selected app: a key binding, a `SwitcherCommand` case, and its effect in the state machine and `Switcher`.
+- Cmd+Q / Cmd+W while the switcher is open, to quit the selected app or close the selected window: a key binding, a `SwitcherCommand` case, and its effect in the state machine and `Switcher`.
+- Cmd+\` to switch between the current app's windows only, like the native shortcut.
+- Type to filter the panel by app name or window title.
+- An "icons only" option for screen sharing, since macOS doesn't reliably keep the panel out of recordings.
+- Above 128 windows, drop the least recently used thumbnails instead of the oldest captured.
 
 ## Disclaimer
 
