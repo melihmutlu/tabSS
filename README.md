@@ -1,7 +1,5 @@
 # tabSS
 
-<sub><sup>This code has been vibecoded and not reviewed by any human. Use at your own risk.</sup></sub>
-
 A small, fast replacement for the macOS Cmd+Tab switcher that switches between **windows**, not apps.
 
 - Every window on every Space and display, including minimized windows and windows of hidden apps
@@ -49,3 +47,7 @@ Other targets: `make test` (unit tests), `make smoke` (checks the installed app 
 ## Future work
 
 - Cmd+Q while the switcher is open to quit the selected app: a key binding, a `SwitcherCommand` case, and its effect in the state machine and `Switcher`.
+
+## Disclaimer
+
+<sub><sup>This code has been vibecoded and not reviewed by any human. Use at your own risk.</sup></sub>
