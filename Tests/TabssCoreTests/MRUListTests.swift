@@ -27,12 +27,10 @@ struct MRUListTests {
         #expect(list.elements == [1, 2, 3])
     }
 
-    @Test func removeAndRetain() {
+    @Test func removeDropsOnlyThatElement() {
         var list = MRUList([1, 2, 3, 4])
         list.remove(2)
         #expect(list.elements == [1, 3, 4])
-        list.retain { $0 != 4 }
-        #expect(list.elements == [1, 3])
     }
 
     @Test func randomOperationsKeepElementsUniqueAndOrdered() {
@@ -45,7 +43,7 @@ struct MRUListTests {
         for _ in 0..<2_000 {
             let before = list.elements
             let element = nextRandom(12)
-            switch nextRandom(4) {
+            switch nextRandom(3) {
             case 0:
                 list.touch(element)
                 #expect(list.elements.first == element)
@@ -53,11 +51,8 @@ struct MRUListTests {
             case 1:
                 list.appendIfAbsent(element)
                 #expect(list.elements == (before.contains(element) ? before : before + [element]))
-            case 2:
-                list.remove(element)
-                #expect(list.elements == before.filter { $0 != element })
             default:
-                list.retain { $0 != element }
+                list.remove(element)
                 #expect(list.elements == before.filter { $0 != element })
             }
             #expect(Set(list.elements).count == list.elements.count)

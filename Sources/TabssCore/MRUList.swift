@@ -20,10 +20,6 @@ public struct MRUList<Element: Hashable> {
     public mutating func remove(_ element: Element) {
         elements.removeAll { $0 == element }
     }
-
-    public mutating func retain(where isIncluded: (Element) -> Bool) {
-        elements.removeAll { !isIncluded($0) }
-    }
 }
 
 extension MRUList: Sendable where Element: Sendable {}
