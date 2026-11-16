@@ -122,10 +122,24 @@ public final class SwitcherController<Entry> {
         switch dependencies.commandKeyState(keyboardSession) {
         case .held:
             send(.showDelayElapsed(session: showSession))
+            watchForMissedRelease(showSession: showSession)
         case .releaseMissed:
             send(.command(.commit))
         case .releaseSeen:
             break
+        }
+    }
+
+    /// While the panel is up, a release the keyboard hook never reported (e.g. it stopped receiving events)
+    /// must not leave the panel stuck on screen.
+    private func watchForMissedRelease(showSession: Int) {
+        dependencies.schedule(SwitcherStateMachine.releaseCheckInterval) { [weak self] in
+            guard let self, machine.isActive, showSession == machine.session else { return }
+            switch dependencies.commandKeyState(keyboardSession) {
+            case .held: watchForMissedRelease(showSession: showSession)
+            case .releaseMissed: send(.command(.commit))
+            case .releaseSeen: break
+            }
         }
     }
 }

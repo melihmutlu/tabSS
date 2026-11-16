@@ -18,6 +18,8 @@ public enum SwitcherEffect: Equatable, Sendable {
 public struct SwitcherStateMachine: Sendable {
     // Long enough that a quick Cmd+Tab tap never flashes the panel, short enough to feel instant.
     public static let showDelay: Duration = .milliseconds(80)
+    // How often a visible panel rechecks Cmd, in case its release was never reported.
+    public static let releaseCheckInterval: Duration = .milliseconds(250)
 
     enum Phase: Equatable, Sendable {
         case idle

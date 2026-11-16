@@ -6,7 +6,8 @@ import TabssCore
 /// System-wide keyboard hook. It runs on its own thread so a busy main thread never delays anyone's typing;
 /// routing happens there and the resulting actions are delivered to the main actor in order.
 final class HotkeyMonitor: Sendable {
-    typealias ActionHandler = @MainActor (_ action: KeyAction, _ session: Int) -> Void
+    /// `issuedAt` is when the tap routed the action, so late deliveries to a blocked main thread can be spotted.
+    typealias ActionHandler = @MainActor (_ action: KeyAction, _ session: Int, _ issuedAt: ContinuousClock.Instant) -> Void
 
     private let onAction: ActionHandler
     private let state = OSAllocatedUnfairLock(initialState: HotkeyState())
@@ -79,7 +80,8 @@ final class HotkeyMonitor: Sendable {
     private func deliver(_ routed: HotkeyState.Routed) {
         guard let action = routed.decision.action else { return }
         let onAction = onAction
-        DispatchQueue.main.async { onAction(action, routed.session) }
+        let issuedAt = ContinuousClock.now
+        DispatchQueue.main.async { onAction(action, routed.session, issuedAt) }
     }
 }
 

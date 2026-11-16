@@ -258,4 +258,24 @@ struct SwitcherControllerTests {
         controller.handle(.command(.commit), session: 1)
         #expect(lastEntry == nil)
     }
+
+    @Test func visiblePanelCommitsWhenAReleaseIsMissedLater() {
+        env.open()
+        env.fireOldestScheduled()  // shows the panel and starts watching Cmd
+        #expect(env.scheduledDelays == [SwitcherStateMachine.showDelay, SwitcherStateMachine.releaseCheckInterval])
+        env.fireOldestScheduled()  // still held: keeps watching
+        env.commandKeyState = .releaseMissed
+        env.fireOldestScheduled()
+        #expect(env.calls == [.show(["A", "B", "C"], 1), .hide, .activate("B")])
+        #expect(!env.controller.isActive)
+    }
+
+    @Test func releaseWatchStopsWhenTheSessionEnds() {
+        env.open()
+        env.fireOldestScheduled()
+        env.send(.cancel)
+        env.commandKeyState = .releaseMissed
+        env.fireScheduled()
+        #expect(env.calls == [.show(["A", "B", "C"], 1), .hide])
+    }
 }

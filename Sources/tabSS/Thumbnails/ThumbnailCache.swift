@@ -16,12 +16,15 @@ final class ThumbnailCache {
     private static let minimumFetchInterval: Duration = .seconds(1)
     // Bounds memory (up to ~0.5 MB each) however many windows an app opens; the oldest fall back to app icons.
     private static let maxImages = 128
+    private static let permissionRecheckInterval: Duration = .seconds(5)
 
     private weak var store: WindowStore?
     private var images: [CGWindowID: CGImage] = [:]
     private var lastCaptures: [CGWindowID: ContinuousClock.Instant] = [:]
     private var shareableWindows: [CGWindowID: SCWindow] = [:]
     private var lastFetch: ContinuousClock.Instant?
+    private var isPermitted = false
+    private var lastPermissionCheck: ContinuousClock.Instant?
     // On screen but never offered for capture (e.g. windows that opt out of screen sharing).
     private var unshareableWindows: Set<CGWindowID> = []
     private var queue: [CGWindowID] = []
@@ -39,12 +42,21 @@ final class ThumbnailCache {
 
     /// For a window about to lose focus while it is still on screen, e.g. right before switching away from it.
     func capture(_ id: CGWindowID) {
-        guard ScreenRecordingPermission.isGranted, isKnown(id), !queue.contains(id), !unshareableWindows.contains(id) else { return }
+        guard hasPermission(), isKnown(id), !queue.contains(id), !unshareableWindows.contains(id) else { return }
         if let last = lastCaptures[id], ContinuousClock.now - last < Self.minimumCaptureInterval { return }
         queue.append(id)
         guard !isCapturing else { return }
         isCapturing = true
         Task { await drainQueue() }
+    }
+
+    /// The permission check is slow when access is missing, so a "no" is trusted for a while.
+    private func hasPermission() -> Bool {
+        if isPermitted { return true }
+        if let lastPermissionCheck, ContinuousClock.now - lastPermissionCheck < Self.permissionRecheckInterval { return false }
+        lastPermissionCheck = .now
+        isPermitted = ScreenRecordingPermission.isGranted
+        return isPermitted
     }
 
     private func isKnown(_ id: CGWindowID) -> Bool {
