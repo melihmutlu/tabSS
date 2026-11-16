@@ -64,12 +64,6 @@ struct KeyRouterTests {
         #expect(router.route(.keyUp(keyCode: 12), isSwitching: true) == .passThrough)
     }
 
-    @Test mutating func resetForgetsSwallowedKeyUps() {
-        _ = router.route(.keyDown(keyCode: KeyCode.tab, modifiers: .command), isSwitching: false)
-        router.reset()
-        #expect(router.route(.keyUp(keyCode: KeyCode.tab), isSwitching: false) == .passThrough)
-    }
-
     @Test mutating func switcherKeysPassThroughWhenIdle() {
         for keyCode in [KeyCode.escape, KeyCode.leftArrow, KeyCode.rightArrow, KeyCode.returnKey, KeyCode.keypadEnter] {
             #expect(router.route(.keyDown(keyCode: keyCode, modifiers: .command), isSwitching: false) == .passThrough)

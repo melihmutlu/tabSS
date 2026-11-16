@@ -82,11 +82,6 @@ public struct KeyRouter: Sendable {
 
     public init() {}
 
-    /// Call when key-ups may have been lost, e.g. after the event tap was re-enabled.
-    public mutating func reset() {
-        swallowedKeyUps.removeAll()
-    }
-
     public mutating func route(_ input: KeyInput, isSwitching: Bool) -> KeyDecision {
         switch input {
         case let .keyDown(keyCode, modifiers, isRepeat):
